@@ -12,7 +12,7 @@ fn input_callback() -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
     }
 }
 
-pub fn input(flag: Arc<std::sync::RwLock<bool>>) {
+pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
     let host = cpal::default_host();
     let device = host.default_input_device().unwrap();
     let config = device.default_input_config().unwrap();
@@ -22,7 +22,7 @@ pub fn input(flag: Arc<std::sync::RwLock<bool>>) {
         .unwrap()
         .set_input_rate(config.sample_rate().0);
 
-    println!("{:?}", config);
+    println!("Input: {:?}", config);
 
     let stream = device
         .build_input_stream(
@@ -39,19 +39,53 @@ pub fn input(flag: Arc<std::sync::RwLock<bool>>) {
     stream.play().unwrap();
 
     loop {
-        if !*flag.read().unwrap() {
+        if !*stopflag.read().unwrap() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 }
 
-pub fn output_callback() -> impl FnMut(&mut [f32], &cpal::OutputCallbackInfo) {
-    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-        // println!("output_callback: {:?}", data.len());
-        // AudioPipeline::get_instance()
-        //     .read()
-        //     .unwrap()
-        //     .read(data.to_vec());
+pub fn output_callback() -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
+    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+        let recv_data = AudioPipeline::get_instance()
+            .read()
+            .unwrap()
+            .read(data.len());
+        data.copy_from_slice(&recv_data);
+    }
+}
+
+pub fn output(stopflag: Arc<std::sync::RwLock<bool>>) {
+    let host = cpal::default_host();
+    let device = host.default_output_device().unwrap();
+    let config = device.default_output_config().unwrap();
+
+    println!("Output: {:?}", config);
+
+    AudioPipeline::get_instance()
+        .write()
+        .unwrap()
+        .set_output_rate(config.sample_rate().0);
+
+    let stream = device
+        .build_output_stream(
+            &config.into(),
+            // &stream_config,
+            output_callback(),
+            |e| {
+                eprintln!("Error: {}", e);
+            },
+            None,
+        )
+        .unwrap();
+
+    stream.play().unwrap();
+
+    loop {
+        if !*stopflag.read().unwrap() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 }

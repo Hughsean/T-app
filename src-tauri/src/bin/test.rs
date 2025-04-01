@@ -1,6 +1,9 @@
 use std::error::Error;
 
-use tauri_app_lib::{audio::audio::Audio, utils::ws::WebsocketProtocol};
+use tauri_app_lib::{
+    audio::{audio::Audio, audio_pipeline::AudioPipeline},
+    utils::ws::WebsocketProtocol,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     // let connect = WebsocketProtocol::get_instance().connect()?;
@@ -18,9 +21,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    let _ = AudioPipeline::get_instance();
+
     tauri::async_runtime::block_on(async {
         Audio::get_instance().write().await.start();
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
         Audio::get_instance().write().await.stop();
     });
     Ok(())

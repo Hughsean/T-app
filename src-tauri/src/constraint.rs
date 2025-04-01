@@ -5,4 +5,4 @@ pub const OUTPUT_CHANNELS: usize = 1;
 
 pub const BUFFER_N: usize = 1000;
 
-pub const WS_URL: &str = "ws://192.168.31.240:8080";
+pub const WS_URL: &str = "ws://110.42.59.58:59331";

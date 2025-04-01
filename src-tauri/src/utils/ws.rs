@@ -70,8 +70,9 @@ impl WebsocketProtocol {
                 let hello_received = self.hello_received.clone();
                 let connected = self.connected.clone();
 
-                let (tx, rx) = mpsc::unbounded_channel();
+                let (_tx, rx) = mpsc::unbounded_channel();
                 self.recver = Arc::new(Mutex::new(Some(rx)));
+                
                 tokio::spawn(async move {
                     while let Some(Ok(msg)) = read.next().await {
                         match msg {
@@ -81,11 +82,16 @@ impl WebsocketProtocol {
                                         hello_received.notify_one();
                                         let mut conn = connected.lock().unwrap();
                                         *conn = true;
+                                    } else {
+                                        println!("{}", text);
                                     }
                                 }
                             }
                             Message::Binary(bytes) => {
-                                AudioPipeline::get_instance().read().unwrap().write_output_data(bytes.to_vec());
+                                AudioPipeline::get_instance()
+                                    .read()
+                                    .unwrap()
+                                    .write_output_data(bytes.to_vec());
                             }
                             _ => {
                                 println!("Received message: {:?}", msg);

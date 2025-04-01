@@ -15,7 +15,6 @@ lazy_static! {
         Arc::new(RwLock::new(WebsocketProtocol::new(WS_URL.to_string())));
 }
 
-// #[derive(Clone)]
 pub struct WebsocketProtocol {
     websocket_url: String,
 

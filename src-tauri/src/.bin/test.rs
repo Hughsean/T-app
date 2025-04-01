@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     tauri::async_runtime::block_on(async {
         Audio::get_instance().write().await.start();
-        tokio::time::sleep(tokio::time::Duration::from_secs(40)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         Audio::get_instance().write().await.stop();
     });
     Ok(())

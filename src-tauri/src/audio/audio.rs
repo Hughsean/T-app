@@ -11,7 +11,7 @@ lazy_static::lazy_static! {
 pub type AudioT = Arc<tokio::sync::RwLock<Audio>>;
 
 pub struct Audio {
-    pub audioDeviceisOn: Arc<std::sync::RwLock<bool>>,
+    pub audioStoped: Arc<std::sync::RwLock<bool>>,
     audioInThread: Option<std::thread::JoinHandle<()>>,
     audioOutThread: Option<std::thread::JoinHandle<()>>,
 }
@@ -19,7 +19,7 @@ pub struct Audio {
 impl Audio {
     fn new() -> Self {
         Audio {
-            audioDeviceisOn: Arc::new(std::sync::RwLock::new(false)),
+            audioStoped: Arc::new(std::sync::RwLock::new(true)),
             audioInThread: None,
             audioOutThread: None,
         }
@@ -30,33 +30,34 @@ impl Audio {
     }
 
     pub fn start(&mut self) {
-        if *self.audioDeviceisOn.read().unwrap() {
+        if !*self.audioStoped.read().unwrap() {
             return;
         }
+        *self.audioStoped.write().unwrap() = false;
 
-        let audioDeviceisOn_ = self.audioDeviceisOn.clone();
+        let audioStoped_ = self.audioStoped.clone();
 
         let in_thread = std::thread::spawn(move || {
-            func::input(audioDeviceisOn_);
+            func::input(audioStoped_);
         });
 
-        let audioDeviceisOn_ = self.audioDeviceisOn.clone();
+        let audioStoped_ = self.audioStoped.clone();
         let out_thread = std::thread::spawn(move || {
-            func::output(audioDeviceisOn_);
+            func::output(audioStoped_);
         });
 
         self.audioInThread = Some(in_thread);
         self.audioOutThread = Some(out_thread);
-
-        *self.audioDeviceisOn.write().unwrap() = true;
     }
 
     pub fn stop(&mut self) {
-        if !*self.audioDeviceisOn.read().unwrap() {
+
+        println!("Audio thread stopping.");
+        if *self.audioStoped.read().unwrap() {
             return;
         }
 
-        *self.audioDeviceisOn.write().unwrap() = false;
+        *self.audioStoped.write().unwrap() = true;
 
         if let Some(thread) = self.audioInThread.take() {
             thread.join().unwrap();

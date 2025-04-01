@@ -4,7 +4,7 @@
   <el-container v-else class="app-container">
     <el-aside :width="isCollapse ? '64px' : '240px'" class="sidebar">
       <div class="logo" :class="{ 'logo-collapsed': isCollapse }">
-        <img src="@/assets/logo.svg" alt="Logo" class="logo-image">
+        <img src="/public/logo.svg" alt="Logo" class="logo-image">
         <span v-if="!isCollapse" class="logo-text">数字人伴侣</span>
       </div>
       <el-menu

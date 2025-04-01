@@ -46,13 +46,18 @@ pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
     }
 }
 
-pub fn output_callback() -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
+fn output_callback() -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-        let recv_data = AudioPipeline::get_instance()
-            .read()
-            .unwrap()
-            .read(data.len());
-        data.copy_from_slice(&recv_data);
+        loop {
+            if let Some(recv_data) = AudioPipeline::get_instance()
+                .read()
+                .unwrap()
+                .read(data.len())
+            {
+                data.copy_from_slice(&recv_data);
+                break;
+            }
+        }
     }
 }
 

@@ -6,8 +6,6 @@ use tauri_app_lib::{
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // let connect = WebsocketProtocol::get_instance().connect()?;
-
     let r = tauri::async_runtime::block_on(async {
         WebsocketProtocol::get_instance()
             .write()
@@ -25,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     tauri::async_runtime::block_on(async {
         Audio::get_instance().write().await.start();
-        tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(40)).await;
         Audio::get_instance().write().await.stop();
     });
     Ok(())

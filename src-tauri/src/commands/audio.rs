@@ -2,9 +2,14 @@
 
 // use crate::state::State;
 
-#[tauri::command]
-pub async fn start() -> Result<(), String> {
-    
+use crate::audio::audio::Audio;
 
-    Ok(())
+#[tauri::command]
+pub async fn audio_start() {
+    Audio::get_instance().write().await.start();
+}
+
+#[tauri::command]
+pub async fn audio_stop() {
+    Audio::get_instance().write().await.stop();
 }

@@ -1,4 +1,4 @@
-use commands::{audio::start, greet};
+use commands::{audio::audio_start, greet};
 pub mod audio;
 pub mod commands;
 pub mod constraint;
@@ -10,7 +10,7 @@ pub fn run() {
     tauri::Builder::default()
         // .manage(state::new_state())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, start])
+        .invoke_handler(tauri::generate_handler![greet, audio_start])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

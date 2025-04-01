@@ -18,9 +18,7 @@ lazy_static! {
 // #[derive(Clone)]
 pub struct WebsocketProtocol {
     websocket_url: String,
-    // access_token: String,
-    // client_id: String,
-    // device_id: String,
+
     connected: Arc<Mutex<bool>>,
     hello_received: Arc<Notify>,
     sender: Option<mpsc::UnboundedSender<Message>>,
@@ -28,17 +26,9 @@ pub struct WebsocketProtocol {
 }
 
 impl WebsocketProtocol {
-    fn new(
-        websocket_url: String,
-        // access_token: String,
-        // client_id: String,
-        // device_id: String,
-    ) -> Self {
+    fn new(websocket_url: String) -> Self {
         Self {
             websocket_url,
-            // access_token,
-            // client_id,
-            // device_id,
             connected: Arc::new(Mutex::new(false)),
             hello_received: Arc::new(Notify::new()),
             sender: None,
@@ -56,12 +46,7 @@ impl WebsocketProtocol {
         }
 
         let url = self.websocket_url.clone();
-        // let headers = [
-        //     ("Authorization", format!("Bearer {}", self.access_token)),
-        //     ("Protocol-Version", "1".to_string()),
-        //     ("Device-Id", self.device_id.clone()),
-        //     ("Client-Id", self.client_id.clone()),
-        // ];
+
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
                 println!("WebSocket connected: {}", url);
@@ -72,7 +57,7 @@ impl WebsocketProtocol {
 
                 let (_tx, rx) = mpsc::unbounded_channel();
                 self.recver = Arc::new(Mutex::new(Some(rx)));
-                
+
                 tokio::spawn(async move {
                     while let Some(Ok(msg)) = read.next().await {
                         match msg {
@@ -83,7 +68,7 @@ impl WebsocketProtocol {
                                         let mut conn = connected.lock().unwrap();
                                         *conn = true;
                                     } else {
-                                        println!("{}", text);
+                                        println!("JSON:\n{}", data);
                                     }
                                 }
                             }
@@ -159,16 +144,6 @@ impl WebsocketProtocol {
             Err("WebSocket未连接".to_string())
         }
     }
-
-    // pub fn receive_audio(&self) -> Result<Vec<Vec<u8>>, String> {
-    //     let mut buffer = Vec::new();
-    //     if let Some(recver) = self.recver.lock().unwrap().as_mut() {
-    //         let _n = recver.blocking_recv_many(&mut buffer, 10);
-    //         return Ok(buffer);
-    //     } else {
-    //         Err("WebSocket未连接".to_string())
-    //     }
-    // }
 
     pub fn close(&self) -> Result<(), String> {
         if let Some(sender) = &self.sender {

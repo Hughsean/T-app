@@ -21,20 +21,30 @@ static INIT: Once = Once::new();
 
 #[allow(non_snake_case)]
 pub struct AudioPipeline {
+    /// 输入音频采样率
     input_rate: Option<u32>,
+    /// 输出音频采样率
     output_rate: Option<u32>,
 
+    /// 输入音频数据
     rawInPCMData: Arc<RwLock<Vec<f32>>>,
+    /// 采样率转换后的音频数据
     resampledInData: Arc<RwLock<Vec<f32>>>,
+    /// Opus编码后的音频数据
     opusInData: Arc<RwLock<Vec<Vec<u8>>>>,
 
+    /// 重采样输出音频数据
     rawOutPCMData: Arc<RwLock<Vec<i16>>>,
+    /// Opus解码后的音频数据
     decodedOutData: Arc<RwLock<Vec<i16>>>,
+    /// 服务器接收的Opus编码音频数据
     opusOutData: Arc<RwLock<Vec<Vec<u8>>>>,
 
     opsuEncoder: Arc<Mutex<opus::Encoder>>,
     opsuDecoder: Arc<Mutex<opus::Decoder>>,
+    /// 发送音频数据的线程
     sendThread: Option<std::thread::JoinHandle<()>>,
+    /// 发送音频数据的线程停止标志
     stop: Arc<RwLock<bool>>,
 }
 
@@ -48,13 +58,14 @@ impl AudioPipeline {
 
         // 线程安全的单例模式
         INIT.call_once(move || {
-            println!("AudioPipeline sender thread init");
             // 持续向服务器发送音频数据
             let st = std::thread::spawn(move || {
+                println!("AudioPipeline sender thread init");
                 while !*stop_flag_.read().unwrap() {
                     AudioPipeline::get_instance().write().unwrap().send_audio();
                     std::thread::sleep(std::time::Duration::from_millis(80));
                 }
+                println!("AudioPipeline sender thread exit");
             });
             *st_ = Some(st);
         });
@@ -113,7 +124,7 @@ impl AudioPipeline {
         self.rawInPCMData.write().unwrap().append(&mut data.clone());
     }
 
-    pub fn resample_in(&self) {
+    fn resample_in(&self) {
         let len = self.rawInPCMData.read().unwrap().len();
 
         if len > FRAME_SIZE * INPUT_CHANNELS {
@@ -150,7 +161,7 @@ impl AudioPipeline {
         }
     }
 
-    pub fn encode(&mut self) {
+    fn encode(&mut self) {
         let len = self.resampledInData.read().unwrap().len();
         if len >= FRAME_SIZE {
             let mut encoder = self.opsuEncoder.lock().unwrap();
@@ -175,13 +186,12 @@ impl AudioPipeline {
             }
 
             *resampled = remain;
-            // self.resampler=Some(res)
         } else {
             self.resample_in();
         }
     }
 
-    pub fn send_audio(&mut self) {
+    fn send_audio(&mut self) {
         let len = self.opusInData.read().unwrap().len();
         if len > 0 {
             let mut opusdata = self.opusInData.write().unwrap();
@@ -218,7 +228,7 @@ impl AudioPipeline {
         self.opusOutData.write().unwrap().push(data);
     }
 
-    pub fn resample_out(&self) {
+    fn resample_out(&self) {
         let len = self.decodedOutData.read().unwrap().len();
         if len > FRAME_SIZE {
             let mut decoded = self.decodedOutData.write().unwrap();
@@ -250,7 +260,7 @@ impl AudioPipeline {
         }
     }
 
-    pub fn decode(&self) {
+    fn decode(&self) {
         let len = self.opusOutData.read().unwrap().len();
         if len > 0 {
             let mut opus_data = self.opusOutData.write().unwrap();
@@ -262,7 +272,6 @@ impl AudioPipeline {
             opus_data.iter().for_each(|e| {
                 let mut temp = vec![0i16; FRAME_SIZE * 10];
                 let size = decoder.decode(&e, &mut temp, false).unwrap();
-                println!("size: {:?}", size);
                 output.push(temp[..size].to_vec());
             });
 
@@ -276,24 +285,21 @@ impl AudioPipeline {
                     .collect::<Vec<_>>()
                     .as_mut(),
             );
-            println!(
-                "output data: {:?}",
-                self.decodedOutData.read().unwrap().len()
-            );
+            
         }
     }
 
-    pub fn read(&self, size: usize) -> Vec<i16> {
+    pub fn read(&self, size: usize) -> Option<Vec<i16>> {
         let len = self.rawOutPCMData.read().unwrap().len();
         if len > size {
             let mut output = self.rawOutPCMData.write().unwrap();
             let remain = output.split_off(size);
             let ret = output[0..size].to_vec();
             *output = remain;
-            ret
+            Some(ret)
         } else {
             self.resample_out();
-            vec![0; size]
+            None
         }
     }
 }

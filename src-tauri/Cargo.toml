@@ -31,6 +31,6 @@ anyhow = "1.0.97"
 lazy_static = "1.5.0"
 futures-util = "0.3.31"
 
-[[bin]]
-name = "test"
+# [[bin]]
+# name = "test"
 # src="src/test.rs"

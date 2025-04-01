@@ -1,160 +1,255 @@
-<script setup lang="ts">
-import { ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+<template>
+  <router-view v-if="isAuthPage"></router-view>
 
-const greetMsg = ref("");
-const name = ref("");
+  <el-container v-else class="app-container">
+    <el-aside :width="isCollapse ? '64px' : '240px'" class="sidebar">
+      <div class="logo" :class="{ 'logo-collapsed': isCollapse }">
+        <img src="@/assets/logo.svg" alt="Logo" class="logo-image">
+        <span v-if="!isCollapse" class="logo-text">数字人伴侣</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="el-menu-vertical"
+        :collapse="isCollapse"
+        :router="true"
+      >
+        <el-menu-item index="/home">
+          <el-icon><House /></el-icon>
+          <template #title>首页</template>
+        </el-menu-item>
+        <el-menu-item index="/chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>对话系统</template>
+        </el-menu-item>
+        <el-menu-item index="/companion">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>情感陪伴</template>
+        </el-menu-item>
+        <el-menu-item index="/voice">
+          <el-icon><Microphone /></el-icon>
+          <template #title>语音交互</template>
+        </el-menu-item>
+        <el-menu-item index="/visual">
+          <el-icon><VideoCamera /></el-icon>
+          <template #title>视觉系统</template>
+        </el-menu-item>
+        <el-menu-item index="/profile">
+          <el-icon><User /></el-icon>
+          <template #title>个人中心</template>
+        </el-menu-item>
+      </el-menu>
+    </el-aside>
 
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsg.value = await invoke("greet", { name: name.value });
+    <el-container class="main-container">
+      <el-header class="header">
+        <el-button
+          class="toggle-sidebar"
+          @click="toggleSidebar"
+          :icon="isCollapse ? Expand : Fold"
+        />
+        <div class="header-content">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索..."
+            :prefix-icon="Search"
+            class="search-input"
+          />
+          <el-dropdown>
+            <el-avatar :size="40" src="https://example.com/avatar.jpg" />
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item>个人设置</el-dropdown-item>
+                <el-dropdown-item>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </el-header>
+
+      <el-main>
+        <VoiceAssistant />
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </el-main>
+    </el-container>
+  </el-container>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import {
+  House,
+  ChatDotRound,
+  VideoCamera,
+  User,
+  Search,
+  Expand,
+  Fold,
+  Microphone
+} from '@element-plus/icons-vue'
+import VoiceAssistant from '@/components/VoiceAssistant.vue'
+
+const route = useRoute()
+const isCollapse = ref(false)
+const searchQuery = ref('')
+
+// 新增：动态菜单激活状态
+const activeMenu = computed(() => {
+  return route.matched[0]?.path || route.path
+})
+
+const isAuthPage = computed(() => {
+  return ['/login', '/register', '/forgot-password'].includes(route.path)
+})
+
+const toggleSidebar = () => {
+  isCollapse.value = !isCollapse.value
 }
 </script>
 
-<template>
-  <main class="container">
-    <h1>Welcome to Tauri + Vue</h1>
-
-    <div class="row">
-      <a href="https://vitejs.dev" target="_blank">
-        <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-      </a>
-      <a href="https://tauri.app" target="_blank">
-        <img src="/tauri.svg" class="logo tauri" alt="Tauri logo" />
-      </a>
-      <a href="https://vuejs.org/" target="_blank">
-        <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-      </a>
-    </div>
-    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
-
-    <form class="row" @submit.prevent="greet">
-      <input id="greet-input" v-model="name" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
-    </form>
-    <p>{{ greetMsg }}</p>
-  </main>
-</template>
-
-<style scoped>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #249b73);
-}
-
-</style>
 <style>
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
 }
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
+#app {
+  height: 100%;
+}
+
+.app-container {
+  height: 100vh;
+  background-color: #f0f2f5;
+}
+
+.sidebar {
+  background-color: #001529;
+  transition: width 0.3s;
+  overflow: hidden;
 }
 
 .logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
+  height: 60px;
   display: flex;
+  align-items: center;
+  padding: 0 20px;
+  color: #fff;
+  transition: all 0.3s;
+}
+
+.logo-collapsed {
+  padding: 0;
   justify-content: center;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.logo-image {
+  width: 30px;
+  height: 30px;
+  margin-right: 10px;
 }
 
-a:hover {
-  color: #535bf2;
+.logo-text {
+  font-size: 18px;
+  font-weight: bold;
+  white-space: nowrap;
+  color: #fff;
 }
 
-h1 {
-  text-align: center;
+.el-menu-vertical:not(.el-menu--collapse) {
+  width: 240px;
 }
 
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+.el-menu-vertical.el-menu--collapse {
+  width: 64px;
 }
 
-button {
-  cursor: pointer;
+.main-container {
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 240px);
+  transition: width 0.3s;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+.main-container:has(+ .sidebar .el-menu--collapse) {
+  width: calc(100% - 64px);
 }
 
-input,
-button {
-  outline: none;
+.header {
+  background-color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
 }
 
-#greet-input {
-  margin-right: 5px;
+.toggle-sidebar {
+  margin-right: 20px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-grow: 1;
+}
+
+.search-input {
+  width: 200px;
+  margin-right: 20px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.el-menu-vertical {
+  background-color: #001529;
+}
+
+.el-menu-item {
+  color: #a6adb4 !important;
+}
+
+.el-menu-item.is-active {
+  color: #409EFF !important;
+  background-color: #f0f7ff !important;
+}
+
+.el-menu-item:hover {
+  color: #fff !important;
+  background-color: #1890ff !important;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    z-index: 1000;
+    height: 100vh;
   }
 
-  a:hover {
-    color: #24c8db;
+  .main-container {
+    width: 100% !important;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .header {
+    padding: 0 10px;
   }
-  button:active {
-    background-color: #0f0f0f69;
+
+  .search-input {
+    width: 150px;
+    margin-right: 10px;
   }
 }
-
 </style>

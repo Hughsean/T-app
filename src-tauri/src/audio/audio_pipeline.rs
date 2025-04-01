@@ -7,7 +7,6 @@ use lazy_static::lazy_static;
 use rubato::FftFixedIn;
 use rubato::Resampler;
 use std::i16;
-use std::ops::Div;
 use std::ops::Mul;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -280,40 +279,6 @@ impl AudioPipeline {
             println!(
                 "output data: {:?}",
                 self.decodedOutData.read().unwrap().len()
-            );
-        }
-    }
-
-    pub fn decode_(&self) {
-        let len = self.opusOutData.read().unwrap().len();
-        if len > 0 {
-            let mut opus_data = self.opusOutData.write().unwrap();
-
-            let decoder = &mut self.opsuDecoder.lock().unwrap();
-
-            let mut output = Vec::with_capacity(len);
-
-            opus_data.iter().for_each(|e| {
-                let mut temp = vec![0i16; FRAME_SIZE * 10];
-                let size = decoder.decode(&e, &mut temp, false).unwrap();
-                // println!("size: {:?}", size);
-                output.push(temp[..size].to_vec());
-            });
-
-            opus_data.clear();
-
-            println!(
-                "MAX:{:?} MIN{:?}",
-                output.iter().flatten().min(),
-                output.iter().flatten().max()
-            );
-            self.rawOutPCMData.write().unwrap().append(
-                output
-                    .iter()
-                    .flatten()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .as_mut(),
             );
         }
     }

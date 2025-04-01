@@ -1,3 +1,4 @@
+use crate::audio::audio_pipeline::AudioPipeline;
 use crate::constraint::WS_URL;
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
@@ -14,7 +15,7 @@ lazy_static! {
         Arc::new(RwLock::new(WebsocketProtocol::new(WS_URL.to_string())));
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
 pub struct WebsocketProtocol {
     websocket_url: String,
     // access_token: String,
@@ -23,12 +24,10 @@ pub struct WebsocketProtocol {
     connected: Arc<Mutex<bool>>,
     hello_received: Arc<Notify>,
     sender: Option<mpsc::UnboundedSender<Message>>,
+    recver: Arc<Mutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>>,
 }
 
 impl WebsocketProtocol {
-    pub fn get_instance() -> Arc<RwLock<WebsocketProtocol>> {
-        WEBSOCKET_PROTOCOL.clone()
-    }
     fn new(
         websocket_url: String,
         // access_token: String,
@@ -43,7 +42,12 @@ impl WebsocketProtocol {
             connected: Arc::new(Mutex::new(false)),
             hello_received: Arc::new(Notify::new()),
             sender: None,
+            recver: Arc::new(Mutex::new(None)),
         }
+    }
+
+    pub fn get_instance() -> Arc<RwLock<WebsocketProtocol>> {
+        WEBSOCKET_PROTOCOL.clone()
     }
 
     pub async fn connect(&mut self) -> Result<(), String> {
@@ -58,32 +62,41 @@ impl WebsocketProtocol {
         //     ("Device-Id", self.device_id.clone()),
         //     ("Client-Id", self.client_id.clone()),
         // ];
-        println!("Connecting to WebSocket: {}", url);
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
                 println!("WebSocket connected: {}", url);
                 let (mut write, mut read) = ws_stream.split();
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                self.sender = Some(tx);
-
                 // Spawn a task to handle incoming messages
                 let hello_received = self.hello_received.clone();
                 let connected = self.connected.clone();
+
+                let (tx, rx) = mpsc::unbounded_channel();
+                self.recver = Arc::new(Mutex::new(Some(rx)));
                 tokio::spawn(async move {
                     while let Some(Ok(msg)) = read.next().await {
-                        if let Message::Text(text) = msg {
-                            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                                if data["type"] == "hello" {
-                                    hello_received.notify_one();
-                                    let mut conn = connected.lock().unwrap();
-                                    *conn = true;
+                        match msg {
+                            Message::Text(text) => {
+                                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if data["type"] == "hello" {
+                                        hello_received.notify_one();
+                                        let mut conn = connected.lock().unwrap();
+                                        *conn = true;
+                                    }
                                 }
+                            }
+                            Message::Binary(bytes) => {
+                                AudioPipeline::get_instance().read().unwrap().write_output_data(bytes.to_vec());
+                            }
+                            _ => {
+                                println!("Received message: {:?}", msg);
                             }
                         }
                     }
                 });
 
                 // Spawn a task to handle outgoing messages
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                self.sender = Some(tx);
                 tokio::spawn(async move {
                     while let Some(msg) = rx.recv().await {
                         if write.send(msg).await.is_err() {
@@ -141,7 +154,17 @@ impl WebsocketProtocol {
         }
     }
 
-    pub async fn close(&self) -> Result<(), String> {
+    // pub fn receive_audio(&self) -> Result<Vec<Vec<u8>>, String> {
+    //     let mut buffer = Vec::new();
+    //     if let Some(recver) = self.recver.lock().unwrap().as_mut() {
+    //         let _n = recver.blocking_recv_many(&mut buffer, 10);
+    //         return Ok(buffer);
+    //     } else {
+    //         Err("WebSocket未连接".to_string())
+    //     }
+    // }
+
+    pub fn close(&self) -> Result<(), String> {
         if let Some(sender) = &self.sender {
             sender
                 .send(Message::Close(None))

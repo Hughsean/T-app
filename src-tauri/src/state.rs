@@ -2,14 +2,12 @@ use std::sync::Arc;
 
 use crate::audio::audio::Audio;
 
-pub struct State {
+pub type State = Arc<tokio::sync::RwLock<State_>>;
+
+pub struct State_ {
     pub audio: Audio,
 }
 
-impl State {
-    // pub fn new() -> Arc<tokio::sync::RwLock<Self>> {
-    //     Arc::new(tokio::sync::RwLock::new(Self {
-
-    //     }))
-    // }
+pub fn new_state() -> State {
+    Arc::new(tokio::sync::RwLock::new(State_ { audio: todo!() }))
 }

@@ -1,21 +1,30 @@
 #![allow(non_snake_case)]
 use std::sync::Arc;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use crate::audio::func;
 
-use crate::audio::{audio_pipeline::AudioPipeline, process};
+lazy_static::lazy_static! {
+    static ref AUDIO: Arc<tokio::sync::RwLock<Audio>> =
+        Arc::new(tokio::sync::RwLock::new(Audio::new()));
+}
 
 pub struct Audio {
     pub audioDeviceisOn: Arc<std::sync::RwLock<bool>>,
-    pub audioThread: Option<std::thread::JoinHandle<()>>,
+    audioInThread: Option<std::thread::JoinHandle<()>>,
+    audioOutThread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Audio {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Audio {
             audioDeviceisOn: Arc::new(std::sync::RwLock::new(false)),
-            audioThread: None,
+            audioInThread: None,
+            audioOutThread: None,
         }
+    }
+
+    pub fn get_instance() -> Arc<tokio::sync::RwLock<Audio>> {
+        AUDIO.clone()
     }
 
     pub fn start(&mut self) {
@@ -23,56 +32,26 @@ impl Audio {
             return;
         }
 
-        *self.audioDeviceisOn.write().unwrap() = true;
         let audioDeviceisOn_ = self.audioDeviceisOn.clone();
 
-        let audio_thread = std::thread::spawn(move || {
-            let host = cpal::default_host();
-            let device = host.default_input_device().unwrap();
-            let config = device.default_input_config().unwrap();
-
-            AudioPipeline::get_instance()
-                .write()
-                .unwrap()
-                .set_input_rate(config.sample_rate().0);
-
-            println!("{:?}", config);
-
-            let stream = device
-                .build_input_stream(
-                    &config.into(),
-                    process::input_callback(),
-                    |e| {
-                        eprintln!("Error: {}", e);
-                    },
-                    None,
-                )
-                .unwrap();
-            //
-
-            stream.play().unwrap();
-
-            loop {
-                if !*audioDeviceisOn_.read().unwrap() {
-                    println!("Audio thread stopping...");
-                    break;
-                }
-                AudioPipeline::get_instance().read().unwrap().send_audio();
-                std::thread::sleep(std::time::Duration::from_millis(200));
-            }
+        let in_thread = std::thread::spawn(move || {
+            func::input(audioDeviceisOn_);
         });
-        self.audioThread = Some(audio_thread);
+
+        self.audioInThread = Some(in_thread);
+        *self.audioDeviceisOn.write().unwrap() = true;
     }
 
     pub fn stop(&mut self) {
-        if *self.audioDeviceisOn.read().unwrap() {
+        if !*self.audioDeviceisOn.read().unwrap() {
             return;
         }
 
         *self.audioDeviceisOn.write().unwrap() = false;
 
-        if let Some(thread) = self.audioThread.take() {
+        if let Some(thread) = self.audioInThread.take() {
             thread.join().unwrap();
         }
+        println!("Audio thread stopped.");
     }
 }

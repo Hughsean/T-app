@@ -1,7 +1,4 @@
-use crate::constraint::BUFFER_N;
-use crate::constraint::FRAME_SIZE;
-use crate::constraint::INPUT_CHANNELS;
-use crate::constraint::OPUS_SAMPLE_RATE;
+use crate::utils::config::CONFIG;
 use crate::utils::ws::WebsocketProtocol;
 use lazy_static::lazy_static;
 use rubato::FftFixedIn;
@@ -12,19 +9,21 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::RwLock;
+use tracing::debug;
+use tracing::info;
 
+const BUFFER_N: usize = 10;
 lazy_static! {
-    static ref AUDIO_PIPELINE: Arc<RwLock<AudioPipeline>> =
-        Arc::new(RwLock::new(AudioPipeline::new()));
+    static ref AUDIO_CACHE: Arc<RwLock<AudioCache>> = Arc::new(RwLock::new(AudioCache::new()));
 }
 static INIT: Once = Once::new();
 
 #[allow(non_snake_case)]
-pub struct AudioPipeline {
+pub struct AudioCache {
     /// 输入音频采样率
-    input_rate: Option<u32>,
+    input_rate: u32,
     /// 输出音频采样率
-    output_rate: Option<u32>,
+    output_rate: u32,
 
     /// 输入音频数据
     rawInPCMData: Arc<RwLock<Vec<f32>>>,
@@ -48,7 +47,7 @@ pub struct AudioPipeline {
     stop: Arc<RwLock<bool>>,
 }
 
-impl AudioPipeline {
+impl AudioCache {
     fn new() -> Self {
         let mut st = None;
         let stop_flag = Arc::new(RwLock::new(false));
@@ -60,49 +59,61 @@ impl AudioPipeline {
         INIT.call_once(move || {
             // 持续向服务器发送音频数据
             let st = std::thread::spawn(move || {
-                println!("AudioPipeline sender thread init");
+                debug!("AudioPipeline sender thread init");
                 while !*stop_flag_.read().unwrap() {
-                    AudioPipeline::get_instance().write().unwrap().send_audio();
+                    AudioCache::get_instance().write().unwrap().send_audio();
                     std::thread::sleep(std::time::Duration::from_millis(80));
                 }
-                println!("AudioPipeline sender thread exit");
+                debug!("AudioPipeline sender thread exit");
             });
             *st_ = Some(st);
         });
 
-        AudioPipeline {
-            input_rate: None,
-            output_rate: None,
-            rawInPCMData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
-            resampledInData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
-            opusInData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
+        AudioCache {
+            input_rate: CONFIG.input_device.sample_rate,
+            output_rate: CONFIG.output_device.sample_rate,
+            rawInPCMData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
+            resampledInData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
+            opusInData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
 
-            rawOutPCMData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
-            decodedOutData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
-            opusOutData: Arc::new(RwLock::new(Vec::with_capacity(FRAME_SIZE * BUFFER_N))),
+            rawOutPCMData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
+            decodedOutData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
+            opusOutData: Arc::new(RwLock::new(Vec::with_capacity(
+                CONFIG.websocket.frame_size * BUFFER_N,
+            ))),
 
             opsuEncoder: Arc::new(Mutex::new(
                 opus::Encoder::new(
-                    OPUS_SAMPLE_RATE as u32,
+                    CONFIG.opus.sample_rate as u32,
                     opus::Channels::Mono,
                     opus::Application::Audio,
                 )
                 .unwrap(),
             )),
             opsuDecoder: Arc::new(Mutex::new(
-                opus::Decoder::new(OPUS_SAMPLE_RATE as u32, opus::Channels::Mono).unwrap(),
+                opus::Decoder::new(CONFIG.opus.sample_rate as u32, opus::Channels::Mono).unwrap(),
             )),
             sendThread: st,
             stop: stop_flag,
         }
     }
 
-    pub fn get_instance() -> Arc<RwLock<AudioPipeline>> {
-        AUDIO_PIPELINE.clone()
+    pub fn get_instance() -> Arc<RwLock<AudioCache>> {
+        AUDIO_CACHE.clone()
     }
 }
 
-impl Drop for AudioPipeline {
+impl Drop for AudioCache {
     fn drop(&mut self) {
         *self.stop.write().unwrap() = true;
 
@@ -113,12 +124,12 @@ impl Drop for AudioPipeline {
 }
 
 // input
-impl AudioPipeline {
-    pub fn set_input_rate(&mut self, rate: u32) {
-        // self.resampler.s
-        // self.resampler.
-        self.input_rate = Some(rate);
-    }
+impl AudioCache {
+    // pub fn set_input_rate(&mut self, rate: u32) {
+    //     // self.resampler.s
+    //     // self.resampler.
+    //     self.input_rate = Some(rate);
+    // }
 
     pub fn write_input_data(&self, data: Vec<f32>) {
         self.rawInPCMData.write().unwrap().append(&mut data.clone());
@@ -127,22 +138,22 @@ impl AudioPipeline {
     fn resample_in(&self) {
         let len = self.rawInPCMData.read().unwrap().len();
 
-        if len > FRAME_SIZE * INPUT_CHANNELS {
+        if len > CONFIG.websocket.frame_size * CONFIG.input_device.channels {
             let mut rawdata = self.rawInPCMData.write().unwrap();
 
             let mut resampler = FftFixedIn::<f32>::new(
-                self.input_rate.unwrap() as usize,
-                OPUS_SAMPLE_RATE,
-                len / INPUT_CHANNELS,
+                self.input_rate as usize,
+                CONFIG.opus.sample_rate,
+                len / CONFIG.input_device.channels,
                 10,
-                INPUT_CHANNELS,
+                CONFIG.input_device.channels,
             )
             .unwrap();
 
-            let chunks = rawdata.chunks_exact(INPUT_CHANNELS);
+            let chunks = rawdata.chunks_exact(CONFIG.input_device.channels);
             let remain = chunks.remainder().to_vec();
 
-            let mut input = vec![Vec::new(); INPUT_CHANNELS];
+            let mut input = vec![Vec::new(); CONFIG.input_device.channels];
             for chunk in chunks {
                 for (channel, &value) in chunk.iter().enumerate() {
                     input[channel].push(value);
@@ -163,16 +174,16 @@ impl AudioPipeline {
 
     fn encode(&mut self) {
         let len = self.resampledInData.read().unwrap().len();
-        if len >= FRAME_SIZE {
+        if len >= CONFIG.websocket.frame_size {
             let mut encoder = self.opsuEncoder.lock().unwrap();
             let mut resampled = self.resampledInData.write().unwrap();
 
-            // let remain = resampled.split_off(n * FRAME_SIZE);
-            let chunks = resampled.chunks_exact(FRAME_SIZE);
+            // let remain = resampled.split_off(n * CONFIG.websocket.frame_size);
+            let chunks = resampled.chunks_exact(CONFIG.websocket.frame_size);
             let remain = chunks.remainder().to_vec();
 
             for chunk in chunks {
-                let mut output = vec![0u8; FRAME_SIZE * BUFFER_N];
+                let mut output = vec![0u8; CONFIG.websocket.frame_size * BUFFER_N];
                 let input = chunk
                     .into_iter()
                     .map(|e| e.mul(i16::MAX as f32) as i16)
@@ -205,7 +216,7 @@ impl AudioPipeline {
                 });
 
                 if let Err(e) = rst {
-                    println!("send opus data error: {}", e);
+                    info!("发送数据帧失败: {}", e);
                 }
             }
 
@@ -217,12 +228,12 @@ impl AudioPipeline {
 }
 
 // output
-impl AudioPipeline {
-    pub fn set_output_rate(&mut self, rate: u32) {
-        // self.resampler.s
-        // self.resampler.
-        self.output_rate = Some(rate);
-    }
+impl AudioCache {
+    // pub fn set_output_rate(&mut self, rate: u32) {
+    //     // self.resampler.s
+    //     // self.resampler.
+    //     self.output_rate = Some(rate);
+    // }
 
     pub fn write_output_data(&self, data: Vec<u8>) {
         self.opusOutData.write().unwrap().push(data);
@@ -230,12 +241,12 @@ impl AudioPipeline {
 
     fn resample_out(&self, size: usize) {
         let len = self.decodedOutData.read().unwrap().len();
-        if len > FRAME_SIZE * size {
+        if len > CONFIG.websocket.frame_size * size {
             let mut decoded = self.decodedOutData.write().unwrap();
 
             let mut resampler = FftFixedIn::<f32>::new(
-                OPUS_SAMPLE_RATE,
-                self.output_rate.unwrap() as usize,
+                CONFIG.opus.sample_rate,
+                self.output_rate as usize,
                 len,
                 10,
                 1,
@@ -270,7 +281,7 @@ impl AudioPipeline {
             let mut output = Vec::with_capacity(len);
 
             opus_data.iter().for_each(|e| {
-                let mut temp = vec![0i16; FRAME_SIZE * 10];
+                let mut temp = vec![0i16; CONFIG.websocket.frame_size * 10];
                 let size = decoder.decode(&e, &mut temp, false).unwrap();
                 output.push(temp[..size].to_vec());
             });

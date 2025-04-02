@@ -1,10 +1,12 @@
 use std::{error::Error, io::stdin};
 use tauri_app_lib::{
-    audio::{audio::Audio, audio_pipeline::AudioPipeline},
-    utils::ws::WebsocketProtocol,
+    audio::{audio::Audio, cache::AudioCache}, init_logger, utils::{config::CONFIG, ws::WebsocketProtocol}
 };
+use tracing::{debug, error, info};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    init_logger();  
+    debug!("test.rs main()");
     let r = tauri::async_runtime::block_on(async {
         WebsocketProtocol::get_instance()
             .write()
@@ -14,11 +16,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     if let Err(e) = r {
-        println!("Failed to connect to websocket: {}", e);
+        info!("websocket( {} ) 连接失败: {}", CONFIG.websocket.url, e);
         return Ok(());
     }
 
-    let _ = AudioPipeline::get_instance();
+    let _ = AudioCache::get_instance();
 
     tauri::async_runtime::block_on(async {
         Audio::get_instance().write().await.start();
@@ -26,10 +28,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut input = String::new();
         match stdin().read_line(&mut input) {
             Ok(n) => {
-                println!("{n} bytes read");
-                println!("{input}");
+                info!("{n} bytes read");
+                info!("{input}");
             }
-            Err(error) => println!("error: {error}"),
+            Err(error) => error!("error: {error}"),
         }
 
         Audio::get_instance().write().await.stop();

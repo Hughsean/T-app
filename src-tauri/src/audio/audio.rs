@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 use std::sync::Arc;
 
+use tracing::debug;
+
 use crate::audio::func;
 
 lazy_static::lazy_static! {
@@ -51,24 +53,24 @@ impl Audio {
     }
 
     pub fn stop(&mut self) {
-        println!("Audio thread stopping.");
+        debug!("Audio thread stopping.");
         if *self.audioStoped.read().unwrap() {
             return;
         }
 
         *self.audioStoped.write().unwrap() = true;
-        
-        println!("flag set to true");
+
+        debug!("flag set to true");
 
         if let Some(thread) = self.audioInThread.take() {
             thread.join().unwrap();
         }
 
-        println!("input thread stopped.");
+        debug!("input thread stopped.");
 
         if let Some(thread) = self.audioOutThread.take() {
             thread.join().unwrap();
         }
-        println!("output thread stopped.");
+        debug!("output thread stopped.");
     }
 }

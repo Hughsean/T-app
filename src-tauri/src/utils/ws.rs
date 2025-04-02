@@ -1,5 +1,6 @@
-use crate::audio::audio_pipeline::AudioPipeline;
-use crate::constraint::WS_URL;
+use crate::audio::cache::AudioCache;
+use crate::utils::config::CONFIG;
+// use crate::constraint::WS_URL;
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -9,12 +10,16 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::debug;
+use tracing::info;
 
 lazy_static! {
-    static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> =
-        Arc::new(RwLock::new(WebsocketProtocol::new(WS_URL.to_string())));
+    static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> = Arc::new(RwLock::new(
+        WebsocketProtocol::new(CONFIG.websocket.url.clone())
+    ));
 }
 
+//TODO
 pub enum ListenMode {
     Auto,
     Manual,
@@ -61,7 +66,7 @@ impl WebsocketProtocol {
 
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
-                println!("WebSocket connected: {}", url);
+                info!("WebSocket connected: {}", url);
                 let (mut write, mut read) = ws_stream.split();
                 // Spawn a task to handle incoming messages
                 let hello_received = self.hello_received.clone();
@@ -80,17 +85,17 @@ impl WebsocketProtocol {
                                         let mut conn = connected.lock().unwrap();
                                         *conn = true;
                                     }
-                                    println!("JSON:\n{}", data);
+                                    debug!("JSON:\n{}", data);
                                 }
                             }
                             Message::Binary(bytes) => {
-                                AudioPipeline::get_instance()
+                                AudioCache::get_instance()
                                     .read()
                                     .unwrap()
                                     .write_output_data(bytes.to_vec());
                             }
                             _ => {
-                                println!("Received message: {:?}", msg);
+                                debug!("Received message: {:?}", msg);
                             }
                         }
                     }
@@ -166,7 +171,7 @@ impl WebsocketProtocol {
         }
     }
 
-    pub async fn ctrl(&self, ctrl: String) -> Result<(), String> {
+    pub async fn ctrl(&self, _ctrl: String) -> Result<(), String> {
         // if let Some(sender) = &self.sender {
         //     sender
         //         .send(Message::Text(ctrl.into()))
@@ -174,7 +179,7 @@ impl WebsocketProtocol {
         // } else {
         //     Err("WebSocket未连接".to_string())
         // }
-        Ok(())
+        unimplemented!()
     }
 
     pub fn close(&self) -> Result<(), String> {

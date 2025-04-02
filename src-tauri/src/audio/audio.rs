@@ -51,20 +51,24 @@ impl Audio {
     }
 
     pub fn stop(&mut self) {
-
         println!("Audio thread stopping.");
         if *self.audioStoped.read().unwrap() {
             return;
         }
 
         *self.audioStoped.write().unwrap() = true;
+        
+        println!("flag set to true");
 
         if let Some(thread) = self.audioInThread.take() {
             thread.join().unwrap();
         }
+
+        println!("input thread stopped.");
+
         if let Some(thread) = self.audioOutThread.take() {
             thread.join().unwrap();
         }
-        println!("Audio thread stopped.");
+        println!("output thread stopped.");
     }
 }

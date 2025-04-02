@@ -1,5 +1,4 @@
-use std::error::Error;
-
+use std::{error::Error, io::stdin};
 use tauri_app_lib::{
     audio::{audio::Audio, audio_pipeline::AudioPipeline},
     utils::ws::WebsocketProtocol,
@@ -23,7 +22,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     tauri::async_runtime::block_on(async {
         Audio::get_instance().write().await.start();
-        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+        let mut input = String::new();
+        match stdin().read_line(&mut input) {
+            Ok(n) => {
+                println!("{n} bytes read");
+                println!("{input}");
+            }
+            Err(error) => println!("error: {error}"),
+        }
+
         Audio::get_instance().write().await.stop();
     });
     Ok(())

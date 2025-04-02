@@ -15,6 +15,19 @@ lazy_static! {
         Arc::new(RwLock::new(WebsocketProtocol::new(WS_URL.to_string())));
 }
 
+pub enum ListenMode {
+    Auto,
+    Manual,
+    RealTime,
+}
+pub enum Ctrl {
+    Start,
+    Stop,
+    Abort,
+
+    Audio(ListenMode),
+}
+
 pub struct WebsocketProtocol {
     websocket_url: String,
 
@@ -66,9 +79,8 @@ impl WebsocketProtocol {
                                         hello_received.notify_one();
                                         let mut conn = connected.lock().unwrap();
                                         *conn = true;
-                                    } else {
-                                        println!("JSON:\n{}", data);
                                     }
+                                    println!("JSON:\n{}", data);
                                 }
                             }
                             Message::Binary(bytes) => {
@@ -142,6 +154,27 @@ impl WebsocketProtocol {
         } else {
             Err("WebSocket未连接".to_string())
         }
+    }
+
+    pub async fn auto_ctrl(&self) -> Result<(), String> {
+        if let Some(sender) = &self.sender {
+            sender
+                .send(Message::Text("{\"type\":\"auto_control\"}".into()))
+                .map_err(|_| "发送自动控制消息失败".to_string())
+        } else {
+            Err("WebSocket未连接".to_string())
+        }
+    }
+
+    pub async fn ctrl(&self, ctrl: String) -> Result<(), String> {
+        // if let Some(sender) = &self.sender {
+        //     sender
+        //         .send(Message::Text(ctrl.into()))
+        //         .map_err(|_| "发送控制消息失败".to_string())
+        // } else {
+        //     Err("WebSocket未连接".to_string())
+        // }
+        Ok(())
     }
 
     pub fn close(&self) -> Result<(), String> {

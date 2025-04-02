@@ -13,7 +13,7 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView,
-      meta: { 
+      meta: {
         guest: true,
         layout: 'auth'
       }
@@ -22,7 +22,7 @@ const router = createRouter({
       path: '/home',
       name: 'home',
       component: HomeView,
-      meta: { 
+      meta: {
         requiresAuth: true,
         layout: 'default'
       }
@@ -31,7 +31,7 @@ const router = createRouter({
       path: '/chat',
       name: 'chat',
       component: ChatView,
-      meta: { 
+      meta: {
         requiresAuth: true,
         layout: 'default'
       }
@@ -40,7 +40,7 @@ const router = createRouter({
       path: '/companion',
       name: 'companion',
       component: CompanionView,
-      meta: { 
+      meta: {
         requiresAuth: true,
         layout: 'default'
       }
@@ -49,7 +49,7 @@ const router = createRouter({
       path: '/voice',
       name: 'voice',
       component: VoiceView,
-      meta: { 
+      meta: {
         requiresAuth: true,
         layout: 'default'
       }
@@ -58,18 +58,18 @@ const router = createRouter({
       path: '/numberman',
       name: 'numberman',
       component: NumbermanView,
-      meta: { 
+      meta: {
         requiresAuth: true,
         layout: 'default'
       }
     }
   ]
-})   
+})
 
 // 路由守卫
 // router.beforeEach((to, from, next) => {
 //   const isAuthenticated = localStorage.getItem('token')
-  
+
 //   if (to.meta.requiresAuth && !isAuthenticated) {
 //     next('/login')
 //   } else if (to.meta.guest && isAuthenticated) {

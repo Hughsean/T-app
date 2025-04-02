@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-app",
+  "productName": "T-App",
   "version": "0.1.0",
   "identifier": "dev.hughsean",
   "build": {
@@ -12,11 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "情感干预",
+        "title": "情感干预客户端",
         "width": 800,
         "height": 600,
         "center": true,
-        "maximized": true
+        "maximized": true,
+        "label": "main",
+        "visible": false
       }
     ],
     "security": {

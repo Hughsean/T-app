@@ -228,9 +228,9 @@ impl AudioPipeline {
         self.opusOutData.write().unwrap().push(data);
     }
 
-    fn resample_out(&self) {
+    fn resample_out(&self, size: usize) {
         let len = self.decodedOutData.read().unwrap().len();
-        if len > FRAME_SIZE {
+        if len > FRAME_SIZE * size {
             let mut decoded = self.decodedOutData.write().unwrap();
 
             let mut resampler = FftFixedIn::<f32>::new(
@@ -285,7 +285,6 @@ impl AudioPipeline {
                     .collect::<Vec<_>>()
                     .as_mut(),
             );
-            
         }
     }
 
@@ -298,8 +297,8 @@ impl AudioPipeline {
             *output = remain;
             Some(ret)
         } else {
-            self.resample_out();
-            None
+            self.resample_out(3);
+            Some(vec![0; size])
         }
     }
 }

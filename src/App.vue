@@ -4,7 +4,7 @@
   <el-container v-else class="app-container">
     <el-aside :width="isCollapse ? '64px' : '240px'" class="sidebar">
       <div class="logo" :class="{ 'logo-collapsed': isCollapse }">
-        <img src="/public/logo.svg" alt="Logo" class="logo-image">
+        <img src="@/assets/logo.svg" alt="Logo" class="logo-image" />
         <span v-if="!isCollapse" class="logo-text">数字人伴侣</span>
       </div>
       <el-menu
@@ -79,8 +79,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed } from "vue";
+import { useRoute } from "vue-router";
 import {
   House,
   ChatDotRound,
@@ -89,30 +89,31 @@ import {
   Search,
   Expand,
   Fold,
-  Microphone
-} from '@element-plus/icons-vue'
-import VoiceAssistant from '@/components/VoiceAssistant.vue'
+  Microphone,
+} from "@element-plus/icons-vue";
+import VoiceAssistant from "@/components/VoiceAssistant.vue";
 
-const route = useRoute()
-const isCollapse = ref(false)
-const searchQuery = ref('')
+const route = useRoute();
+const isCollapse = ref(false);
+const searchQuery = ref("");
 
 // 新增：动态菜单激活状态
 const activeMenu = computed(() => {
-  return route.matched[0]?.path || route.path
-})
+  return route.matched[0]?.path || route.path;
+});
 
 const isAuthPage = computed(() => {
-  return ['/login', '/register', '/forgot-password'].includes(route.path)
-})
+  return ["/login", "/register", "/forgot-password"].includes(route.path);
+});
 
 const toggleSidebar = () => {
-  isCollapse.value = !isCollapse.value
-}
+  isCollapse.value = !isCollapse.value;
+};
 </script>
 
 <style>
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
@@ -223,7 +224,7 @@ html, body {
 }
 
 .el-menu-item.is-active {
-  color: #409EFF !important;
+  color: #409eff !important;
   background-color: #f0f7ff !important;
 }
 

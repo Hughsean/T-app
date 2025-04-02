@@ -43,7 +43,11 @@
       <div
         class="assistant-button"
         :class="{ active: isListening }"
-        @click="toggleVoice"
+        @click="
+          () => {
+            // TODO: 语音助手交互逻辑
+          }
+        "
       >
         <el-icon :size="36">
           <svg viewBox="0 0 1024 1024">
@@ -73,7 +77,7 @@ import { Loading, VideoPlay } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
 import { useVoiceStore } from "@/stores/voiceStore";
 import { wsEvent, audioConfig, protocolHeader } from "@/constants/constants";
-import WebsocketProtocol from "@/lib/websocket";
+// import WebsocketProtocol from "@/lib/websocket";
 import { onClickOutside } from "@vueuse/core";
 
 // 状态声明（完全无需修改）
@@ -88,7 +92,7 @@ const connectionStatus = ref<"connected" | "connecting" | "disconnected">(
   "disconnected"
 );
 const audioContext = ref<AudioContext | null>(null);
-const wsProtocol = ref<WebsocketProtocol | null>(null);
+// const wsProtocol = ref<WebsocketProtocol | null>(null);
 const assistantWrapperRef = ref<HTMLElement | null>(null);
 const mediaStream = ref<MediaStream | null>(null);
 const voiceStore = useVoiceStore();
@@ -120,36 +124,30 @@ const initAudioRecorder = async () => {
   //       noiseSuppression: false,
   //     },
   //   });
-
   //   // 浏览器兼容处理
   //   const AudioContext = window.AudioContext || window.webkitAudioContext;
   //   const context = new AudioContext({
   //     sampleRate: audioConfig.SAMPLE_RATE,
   //     latencyHint: "interactive",
   //   });
-
   //   // 加载并注册Worklet
   //   await context.audioWorklet.addModule("/src/audio-processor.js");
-
   //   // 创建处理节点
   //   const processor = new AudioWorkletNode(context, "pcm-processor", {
   //     processorOptions: {
   //       frameSize: audioConfig.FRAME_SIZE,
   //     },
   //   });
-
   //   // 连接音频节点
   //   const source = context.createMediaStreamSource(mediaStream.value);
   //   source.connect(processor);
   //   processor.connect(context.destination);
-
   //   // 接收处理后的数据
   //   processor.port.onmessage = (e) => {
   //     if (wsProtocol.value?.connected && e.data.byteLength > 0) {
   //       wsProtocol.value.sendAudio(e.data);
   //     }
   //   };
-
   //   // 上下文恢复安全处理
   //   if (context.state === "suspended") {
   //     await context.resume();
@@ -161,40 +159,40 @@ const initAudioRecorder = async () => {
 };
 
 // 网络通信控制（完整实现）
-const setupWebsocketListeners = () => {
-  if (!wsProtocol.value) return;
+// const setupWebsocketListeners = () => {
+//   if (!wsProtocol.value) return;
 
-  wsProtocol.value.on(wsEvent.audioChannelOpened, () => {
-    connectionStatus.value = "connected";
-    initAudioRecorder();
-  });
+//   wsProtocol.value.on(wsEvent.audioChannelOpened, () => {
+//     connectionStatus.value = "connected";
+//     initAudioRecorder();
+//   });
 
-  wsProtocol.value.on(wsEvent.audioChannelClosed, () => {
-    connectionStatus.value = "disconnected";
-    stopRecording();
-  });
+//   wsProtocol.value.on(wsEvent.audioChannelClosed, () => {
+//     connectionStatus.value = "disconnected";
+//     stopRecording();
+//   });
 
-  wsProtocol.value.on(wsEvent.incomingJson, (data: any) => {
-    transcriptText.value = data.text;
-    isProcessing.value = false;
-  });
+//   wsProtocol.value.on(wsEvent.incomingJson, (data: any) => {
+//     transcriptText.value = data.text;
+//     isProcessing.value = false;
+//   });
 
-  wsProtocol.value.on(wsEvent.networkError, (error: any) => {
-    ElMessage.error(`网络错误: ${error}`);
-    connectionStatus.value = "disconnected";
-  });
-};
+//   wsProtocol.value.on(wsEvent.networkError, (error: any) => {
+//     ElMessage.error(`网络错误: ${error}`);
+//     connectionStatus.value = "disconnected";
+//   });
+// };
 
 // 用户交互控制（完整方法）
-const toggleVoice = () => {
-  if (!isListening.value) {
-    wsProtocol.value?.connect();
-    isListening.value = true;
-    isProcessing.value = true;
-  } else {
-    stopRecording();
-  }
-};
+// const toggleVoice = () => {
+//   if (!isListening.value) {
+//     wsProtocol.value?.connect();
+//     isListening.value = true;
+//     isProcessing.value = true;
+//   } else {
+//     stopRecording();
+//   }
+// };
 
 const stopRecording = () => {
   mediaStream.value?.getTracks().forEach((track) => track.stop());
@@ -211,11 +209,11 @@ const getBarStyle = (n: number) => ({
 
 // 生命周期管理
 onMounted(() => {
-  wsProtocol.value = new WebsocketProtocol();
-  setupWebsocketListeners();
-  onClickOutside(assistantWrapperRef, () => {
-    if (isListening.value) stopRecording();
-  });
+  // wsProtocol.value = new WebsocketProtocol();
+  // setupWebsocketListeners();
+  // onClickOutside(assistantWrapperRef, () => {
+  //   if (isListening.value) stopRecording();
+  // });
 });
 
 onUnmounted(() => {

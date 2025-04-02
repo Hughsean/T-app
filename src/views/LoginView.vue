@@ -8,7 +8,7 @@
 
     <el-card class="login-card">
       <div class="logo-container">
-        <img src="/public/logo.svg" alt="Logo" class="logo">
+        <img src="@/assets/logo.svg" alt="Logo" class="logo">
         <h2>数字人多模态陪伴系统</h2>
       </div>
 

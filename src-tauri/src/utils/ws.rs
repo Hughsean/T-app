@@ -85,7 +85,7 @@ impl WebsocketProtocol {
                                         let mut conn = connected.lock().unwrap();
                                         *conn = true;
                                     }
-                                    debug!("JSON:\n{}", data);
+                                    debug!("JSON:\n{:#}", data);
                                 }
                             }
                             Message::Binary(bytes) => {
@@ -95,7 +95,7 @@ impl WebsocketProtocol {
                                     .write_output_data(bytes.to_vec());
                             }
                             _ => {
-                                debug!("Received message: {:#?}", msg);
+                                debug!("Received message:\n{:#?}", msg);
                             }
                         }
                     }

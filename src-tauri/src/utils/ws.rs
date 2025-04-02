@@ -95,7 +95,7 @@ impl WebsocketProtocol {
                                     .write_output_data(bytes.to_vec());
                             }
                             _ => {
-                                debug!("Received message: {:?}", msg);
+                                debug!("Received message: {:#?}", msg);
                             }
                         }
                     }

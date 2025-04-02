@@ -31,12 +31,14 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+/// 初始化日志
 pub fn init_logger() {
     let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(LevelFilter::DEBUG);
 
     let fmt = tracing_subscriber::fmt::layer()
         .with_target(true)
-        .with_timer(tracing_subscriber::fmt::time::uptime())
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
         .with_level(true)
         .with_file(true)
         .with_line_number(true);

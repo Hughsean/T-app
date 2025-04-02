@@ -1,10 +1,8 @@
-use std::default;
-
 use cpal::{
     Device,
     traits::{DeviceTrait, HostTrait},
 };
-use tracing::debug;
+use std::default;
 
 #[derive(Debug, Clone)]
 pub struct DeviceConfig {
@@ -63,12 +61,10 @@ pub fn get_device_config(t: DeviceType) -> anyhow::Result<cpal::SupportedStreamC
     match t {
         DeviceType::Input => {
             let config = device.default_input_config()?;
-            // debug!("Input: {:?}", config);
             Ok(config)
         }
         DeviceType::Output => {
             let config = device.default_output_config()?;
-            // debug!("Output: {:?}", config);
             Ok(config)
         }
     }

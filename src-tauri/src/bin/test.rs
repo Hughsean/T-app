@@ -1,12 +1,13 @@
 use std::{error::Error, io::stdin};
 use tauri_app_lib::{
-    audio::{audio::Audio, cache::AudioCache}, init_logger, utils::{config::CONFIG, ws::WebsocketProtocol}
+    audio::{audio::Audio, cache::AudioCache},
+    init_logger,
+    utils::{config::CONFIG, ws::WebsocketProtocol},
 };
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    init_logger();  
-    debug!("test.rs main()");
+    init_logger();
     let r = tauri::async_runtime::block_on(async {
         WebsocketProtocol::get_instance()
             .write()

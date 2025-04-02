@@ -106,7 +106,7 @@ impl Config {
             .unwrap()
             .into();
 
-        debug!("配置: {:?}", config);
+        debug!("配置: \n{:#?}", config);
         return config;
     }
 }

@@ -8,7 +8,6 @@ use tracing::error;
 
 fn input_callback() -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-        // println!("input_callback: {:?}", data.len());
         AudioCache::get_instance()
             .read()
             .unwrap()
@@ -17,17 +16,6 @@ fn input_callback() -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
 }
 
 pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
-    // let host = cpal::default_host();
-    // let device = host.default_input_device().unwrap();
-    // let config = device.default_input_config().unwrap();
-
-    // AudioCache::get_instance()
-    //     .write()
-    //     .unwrap()
-    //     .set_input_rate(config.sample_rate().0);
-
-    // debug!("Input: {:?}", config);
-
     let stream = get_device(crate::utils::device::DeviceType::Input)
         .inspect_err(|e| error!("获取输入设备失败: {}", e))
         .unwrap()

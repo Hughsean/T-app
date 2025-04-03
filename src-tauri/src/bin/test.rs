@@ -34,7 +34,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         match stdin().read_line(&mut input) {
             Ok(n) => {
                 info!("{n} bytes read");
-                info!("{input}");
             }
             Err(error) => error!("error: {error}"),
         }

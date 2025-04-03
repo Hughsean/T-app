@@ -9,14 +9,16 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Once;
 use std::sync::RwLock;
+use std::thread::sleep;
+use std::time::Duration;
 use tracing::debug;
 use tracing::info;
 
 const BUFFER_N: usize = 10;
+static INIT: Once = Once::new();
 lazy_static! {
     static ref AUDIO_CACHE: Arc<RwLock<AudioCache>> = Arc::new(RwLock::new(AudioCache::new()));
 }
-static INIT: Once = Once::new();
 
 #[allow(non_snake_case)]
 pub struct AudioCache {
@@ -45,6 +47,10 @@ pub struct AudioCache {
     sendThread: Option<std::thread::JoinHandle<()>>,
     /// 发送音频数据的线程停止标志
     stop: Arc<RwLock<bool>>,
+
+    is_session_active: bool,
+    // 会话开始时，进行数据接收缓存
+    session_init: Once,
 }
 
 impl AudioCache {
@@ -59,12 +65,12 @@ impl AudioCache {
         INIT.call_once(move || {
             // 持续向服务器发送音频数据
             let st = std::thread::spawn(move || {
-                debug!("AudioPipeline sender thread init");
+                debug!("AudioCache 数据发送线程初始化");
                 while !*stop_flag_.read().unwrap() {
                     AudioCache::get_instance().write().unwrap().send_audio();
                     std::thread::sleep(std::time::Duration::from_millis(80));
                 }
-                debug!("AudioPipeline sender thread exit");
+                debug!("AudioCache 数据发送线程退出");
             });
             *st_ = Some(st);
         });
@@ -109,6 +115,8 @@ impl AudioCache {
             )),
             sendThread: st,
             stop: stop_flag,
+            is_session_active: false,
+            session_init: Once::new(),
         }
     }
 
@@ -307,6 +315,16 @@ impl AudioCache {
     }
 
     pub fn read(&self, size: usize) -> Option<Vec<i16>> {
+        // 新一轮会话，进行数据接收缓存
+        self.session_init.call_once(|| {
+            sleep(Duration::from_millis(1000));
+            debug!("会话开始，进行数据接收缓存");
+        });
+
+        if !self.is_session_active {
+            return None;
+        }
+
         let len = self.rawOutPCMData.read().unwrap().len();
         if len > size {
             let mut output = self.rawOutPCMData.write().unwrap();
@@ -316,7 +334,27 @@ impl AudioCache {
             Some(ret)
         } else {
             self.resample_out(3);
-            Some(vec![0; size])
+            None
         }
+    }
+}
+
+impl AudioCache {
+    // XXX: 待审核
+    // 会话控制只对输出音频有效
+    // 目前输入音频数据不需要控制
+    pub fn session_stop(&mut self) {
+        self.is_session_active = true;
+        // 重置会话状态
+        self.session_init = Once::new();
+        *self.rawOutPCMData.write().unwrap() = Vec::new();
+        *self.decodedOutData.write().unwrap() = Vec::new();
+        *self.opusOutData.write().unwrap() = Vec::new();
+
+        debug!("会话重置，清空输出缓存数据");
+    }
+    pub fn session_start(&mut self) {
+        self.is_session_active = false;
+        debug!("会话开始");
     }
 }

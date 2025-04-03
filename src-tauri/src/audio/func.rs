@@ -33,7 +33,6 @@ pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
             None,
         )
         .unwrap();
-    //
 
     stream.play().unwrap();
 

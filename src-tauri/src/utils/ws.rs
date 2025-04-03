@@ -12,43 +12,44 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::debug;
 use tracing::info;
 
-lazy_static! {
-    static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> = Arc::new(RwLock::new(
-        WebsocketProtocol::new(Config::get_instance().websocket.url.clone())
-    ));
-}
-
 //TODO
 pub enum ListenMode {
     Auto,
     Manual,
     RealTime,
 }
+
 pub enum Ctrl {
     Start,
     Stop,
     Abort,
-
     Audio(ListenMode),
 }
 
 pub struct WebsocketProtocol {
     websocket_url: String,
-
-    connected: Arc<Mutex<bool>>,
+    connected: Arc<RwLock<bool>>,
     hello_received: Arc<Notify>,
     sender: Option<mpsc::UnboundedSender<Message>>,
     recver: Arc<Mutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>>,
+    session_id: Arc<RwLock<String>>,
+}
+
+lazy_static! {
+    static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> = Arc::new(RwLock::new(
+        WebsocketProtocol::new(Config::get_instance().websocket.url.clone())
+    ));
 }
 
 impl WebsocketProtocol {
     fn new(websocket_url: String) -> Self {
         Self {
             websocket_url,
-            connected: Arc::new(Mutex::new(false)),
+            connected: Arc::new(RwLock::new(false)),
             hello_received: Arc::new(Notify::new()),
             sender: None,
             recver: Arc::new(Mutex::new(None)),
+            session_id: Arc::new(RwLock::new(String::new())),
         }
     }
 
@@ -56,22 +57,23 @@ impl WebsocketProtocol {
         WEBSOCKET_PROTOCOL.clone()
     }
 
-    pub async fn connect(&mut self) -> Result<(), String> {
-        if self.connected.lock().unwrap().clone() {
-            return Ok(());
+    pub async fn connect(&mut self) -> Result<String, String> {
+        if *self.connected.read().await {
+            return Ok(self.session_id.read().await.clone());
         }
 
         let url = self.websocket_url.clone();
-
         match connect_async(&url).await {
             Ok((ws_stream, _)) => {
-                info!("WebSocket connected: {}", url);
+                info!("WebSocket 已连接: {}", url);
                 let (mut write, mut read) = ws_stream.split();
                 // Spawn a task to handle incoming messages
                 let hello_received = self.hello_received.clone();
                 let connected = self.connected.clone();
 
                 let (_tx, rx) = mpsc::unbounded_channel();
+                let id = self.session_id.clone();
+
                 self.recver = Arc::new(Mutex::new(Some(rx)));
 
                 tokio::spawn(async move {
@@ -81,8 +83,10 @@ impl WebsocketProtocol {
                                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
                                     if data["type"] == "hello" {
                                         hello_received.notify_one();
-                                        let mut conn = connected.lock().unwrap();
-                                        *conn = true;
+                                        *connected.write().await = true;
+                                        *id.write().await =
+                                            data["session_id"].as_str().unwrap_or("").to_string();
+                                        debug!("session_id = {}", id.read().await);
                                     }
                                     debug!("JSON:\n{:#}", data);
                                 }
@@ -134,7 +138,7 @@ impl WebsocketProtocol {
                 .await
                 .map_err(|_| "等待服务器hello响应超时".to_string())?;
 
-                Ok(())
+                Ok(self.session_id.read().await.clone())
             }
             Err(e) => Err(format!("WebSocket连接失败: {}", e)),
         }
@@ -181,13 +185,26 @@ impl WebsocketProtocol {
         unimplemented!()
     }
 
-    pub fn close(&self) -> Result<(), String> {
+    pub async fn close(&self) -> Result<(), String> {
+        if *self.connected.read().await {
+            return Ok(());
+        }
+        *self.connected.write().await = false;
+
         if let Some(sender) = &self.sender {
             sender
                 .send(Message::Close(None))
                 .map_err(|_| "关闭WebSocket连接失败".to_string())
         } else {
             Err("WebSocket未连接".to_string())
+        }
+    }
+
+    pub async fn get_session_id(&self) -> Option<String> {
+        if *self.connected.read().await {
+            Some(self.session_id.read().await.clone())
+        } else {
+            None
         }
     }
 }

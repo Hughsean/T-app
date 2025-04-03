@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use commands::{audio::audio_start, greet};
 use tauri::Manager;
-use tracing::{info, level_filters::LevelFilter};
+use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utils::config::Config;
 pub mod audio;
@@ -34,21 +34,38 @@ pub fn run() {
 
 /// 初始化日志
 pub fn init_logger() {
-    let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(LevelFilter::DEBUG);
+    let log_file: std::fs::File = Config::get_instance().logger.clone().into();
+    let level: tracing::level_filters::LevelFilter = Config::get_instance().logger.clone().into();
 
-    let fmt = tracing_subscriber::fmt::layer()
+    // 配置输出到文件的 fmt 层
+    let file_fmt = tracing_subscriber::fmt::layer()
         .with_target(true)
-        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
         .with_level(true)
         .with_file(true)
-        .with_line_number(true);
+        .with_line_number(true)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(
+            time::macros::format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"),
+        ))
+        .with_ansi(false)
+        .with_writer(std::sync::Mutex::new(log_file));
 
-    tracing_subscriber::registry().with(filter).with(fmt).init();
+    // 配置输出到控制台的 fmt 层
+    let console_fmt = tracing_subscriber::fmt::layer()
+        .with_target(true)
+        .with_level(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::new(
+            time::macros::format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"),
+        ))
+        .with_ansi(true);
 
-    let level = Config::get_instance().logger.clone().into();
-    reload_handle
-        .modify(|f| *f = level)
-        .expect("Failed to reload tracing subscriber");
+    tracing_subscriber::registry()
+        .with(level)
+        .with(file_fmt)
+        .with(console_fmt)
+        .init();
+    info!(">>>>>日志初始化完成<<<<<");
 
     info!("工作目录: {}", std::env::current_dir().unwrap().display());
 }

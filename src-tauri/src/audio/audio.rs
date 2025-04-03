@@ -1,17 +1,14 @@
 #![allow(non_snake_case)]
-use std::sync::Arc;
-
-use tracing::debug;
-
 use crate::audio::func;
-
-lazy_static::lazy_static! {
-  pub  static ref AUDIO: AudioT =
-    Arc::new(tokio::sync::RwLock::new(Audio::new()));
-}
+use lazy_static::lazy_static;
+use std::sync::Arc;
+use tracing::debug;
 
 pub type AudioT = Arc<tokio::sync::RwLock<Audio>>;
 
+lazy_static! {
+    static ref AUDIO: AudioT = Arc::new(tokio::sync::RwLock::new(Audio::new()));
+}
 pub struct Audio {
     pub audioStoped: Arc<std::sync::RwLock<bool>>,
     audioInThread: Option<std::thread::JoinHandle<()>>,
@@ -53,24 +50,24 @@ impl Audio {
     }
 
     pub fn stop(&mut self) {
-        debug!("Audio thread stopping.");
+        debug!("音频停止中...");
         if *self.audioStoped.read().unwrap() {
             return;
         }
 
         *self.audioStoped.write().unwrap() = true;
 
-        debug!("flag set to true");
+        debug!("音频停机信号已发送...");
 
         if let Some(thread) = self.audioInThread.take() {
             thread.join().unwrap();
         }
 
-        debug!("input thread stopped.");
+        debug!("输入线程停止");
 
         if let Some(thread) = self.audioOutThread.take() {
             thread.join().unwrap();
         }
-        debug!("output thread stopped.");
+        debug!("输出线程停止");
     }
 }

@@ -2,7 +2,7 @@ use std::{error::Error, io::stdin};
 use tauri_app_lib::{
     audio::{audio::Audio, cache::AudioCache},
     init_logger,
-    utils::{config::CONFIG, ws::WebsocketProtocol},
+    utils::{config::Config, ws::WebsocketProtocol},
 };
 use tracing::{error, info};
 
@@ -17,7 +17,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     if let Err(e) = r {
-        info!("websocket( {} ) 连接失败: {}", CONFIG.websocket.url, e);
+        info!(
+            "websocket( {} ) 连接失败: {}",
+            Config::get_instance().websocket.url,
+            e
+        );
         return Ok(());
     }
 

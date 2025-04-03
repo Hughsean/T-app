@@ -1,6 +1,6 @@
 use crate::{
     audio::cache::AudioCache,
-    utils::{config::CONFIG, device::get_device},
+    utils::{config::Config, device::get_device},
 };
 use cpal::traits::{DeviceTrait, StreamTrait};
 use std::sync::Arc;
@@ -20,7 +20,12 @@ pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
         .inspect_err(|e| error!("获取输入设备失败: {}", e))
         .unwrap()
         .build_input_stream(
-            &CONFIG.input_device.raw_config.clone().unwrap().into(),
+            &Config::get_instance()
+                .input_device
+                .raw_config
+                .clone()
+                .unwrap()
+                .into(),
             input_callback(),
             |e| {
                 error!("Error: {}", e);
@@ -68,7 +73,12 @@ pub fn output(stopflag: Arc<std::sync::RwLock<bool>>) {
         .inspect_err(|e| error!("获取输出设备失败: {}", e))
         .unwrap()
         .build_output_stream(
-            &CONFIG.output_device.raw_config.clone().unwrap().into(),
+            &Config::get_instance()
+                .output_device
+                .raw_config
+                .clone()
+                .unwrap()
+                .into(),
             output_callback(stopflag.clone()),
             |e| {
                 error!("Error: {}", e);

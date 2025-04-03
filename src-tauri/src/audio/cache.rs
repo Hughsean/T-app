@@ -1,4 +1,4 @@
-use crate::utils::config::CONFIG;
+use crate::utils::config::Config;
 use crate::utils::ws::WebsocketProtocol;
 use lazy_static::lazy_static;
 use rubato::FftFixedIn;
@@ -70,38 +70,42 @@ impl AudioCache {
         });
 
         AudioCache {
-            input_rate: CONFIG.input_device.sample_rate,
-            output_rate: CONFIG.output_device.sample_rate,
+            input_rate: Config::get_instance().input_device.sample_rate,
+            output_rate: Config::get_instance().output_device.sample_rate,
             rawInPCMData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
             resampledInData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
             opusInData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
 
             rawOutPCMData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
             decodedOutData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
             opusOutData: Arc::new(RwLock::new(Vec::with_capacity(
-                CONFIG.websocket.frame_size * BUFFER_N,
+                Config::get_instance().websocket.frame_size * BUFFER_N,
             ))),
 
             opsuEncoder: Arc::new(Mutex::new(
                 opus::Encoder::new(
-                    CONFIG.opus.sample_rate as u32,
+                    Config::get_instance().opus.sample_rate as u32,
                     opus::Channels::Mono,
                     opus::Application::Audio,
                 )
                 .unwrap(),
             )),
             opsuDecoder: Arc::new(Mutex::new(
-                opus::Decoder::new(CONFIG.opus.sample_rate as u32, opus::Channels::Mono).unwrap(),
+                opus::Decoder::new(
+                    Config::get_instance().opus.sample_rate as u32,
+                    opus::Channels::Mono,
+                )
+                .unwrap(),
             )),
             sendThread: st,
             stop: stop_flag,
@@ -138,22 +142,25 @@ impl AudioCache {
     fn resample_in(&self) {
         let len = self.rawInPCMData.read().unwrap().len();
 
-        if len > CONFIG.websocket.frame_size * CONFIG.input_device.channels {
+        if len
+            > Config::get_instance().websocket.frame_size
+                * Config::get_instance().input_device.channels
+        {
             let mut rawdata = self.rawInPCMData.write().unwrap();
 
             let mut resampler = FftFixedIn::<f32>::new(
                 self.input_rate as usize,
-                CONFIG.opus.sample_rate,
-                len / CONFIG.input_device.channels,
+                Config::get_instance().opus.sample_rate,
+                len / Config::get_instance().input_device.channels,
                 10,
-                CONFIG.input_device.channels,
+                Config::get_instance().input_device.channels,
             )
             .unwrap();
 
-            let chunks = rawdata.chunks_exact(CONFIG.input_device.channels);
+            let chunks = rawdata.chunks_exact(Config::get_instance().input_device.channels);
             let remain = chunks.remainder().to_vec();
 
-            let mut input = vec![Vec::new(); CONFIG.input_device.channels];
+            let mut input = vec![Vec::new(); Config::get_instance().input_device.channels];
             for chunk in chunks {
                 for (channel, &value) in chunk.iter().enumerate() {
                     input[channel].push(value);
@@ -174,16 +181,16 @@ impl AudioCache {
 
     fn encode(&mut self) {
         let len = self.resampledInData.read().unwrap().len();
-        if len >= CONFIG.websocket.frame_size {
+        if len >= Config::get_instance().websocket.frame_size {
             let mut encoder = self.opsuEncoder.lock().unwrap();
             let mut resampled = self.resampledInData.write().unwrap();
 
-            // let remain = resampled.split_off(n * CONFIG.websocket.frame_size);
-            let chunks = resampled.chunks_exact(CONFIG.websocket.frame_size);
+            // let remain = resampled.split_off(n * Config::get_instance().websocket.frame_size);
+            let chunks = resampled.chunks_exact(Config::get_instance().websocket.frame_size);
             let remain = chunks.remainder().to_vec();
 
             for chunk in chunks {
-                let mut output = vec![0u8; CONFIG.websocket.frame_size * BUFFER_N];
+                let mut output = vec![0u8; Config::get_instance().websocket.frame_size * BUFFER_N];
                 let input = chunk
                     .into_iter()
                     .map(|e| e.mul(i16::MAX as f32) as i16)
@@ -241,11 +248,11 @@ impl AudioCache {
 
     fn resample_out(&self, size: usize) {
         let len = self.decodedOutData.read().unwrap().len();
-        if len > CONFIG.websocket.frame_size * size {
+        if len > Config::get_instance().websocket.frame_size * size {
             let mut decoded = self.decodedOutData.write().unwrap();
 
             let mut resampler = FftFixedIn::<f32>::new(
-                CONFIG.opus.sample_rate,
+                Config::get_instance().opus.sample_rate,
                 self.output_rate as usize,
                 len,
                 10,
@@ -281,7 +288,7 @@ impl AudioCache {
             let mut output = Vec::with_capacity(len);
 
             opus_data.iter().for_each(|e| {
-                let mut temp = vec![0i16; CONFIG.websocket.frame_size * 10];
+                let mut temp = vec![0i16; Config::get_instance().websocket.frame_size * 10];
                 let size = decoder.decode(&e, &mut temp, false).unwrap();
                 output.push(temp[..size].to_vec());
             });

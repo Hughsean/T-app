@@ -1,6 +1,5 @@
 use crate::audio::cache::AudioCache;
-use crate::utils::config::CONFIG;
-// use crate::constraint::WS_URL;
+use crate::utils::config::Config;
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -15,7 +14,7 @@ use tracing::info;
 
 lazy_static! {
     static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> = Arc::new(RwLock::new(
-        WebsocketProtocol::new(CONFIG.websocket.url.clone())
+        WebsocketProtocol::new(Config::get_instance().websocket.url.clone())
     ));
 }
 

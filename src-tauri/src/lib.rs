@@ -3,7 +3,7 @@ use commands::{audio::audio_start, greet};
 use tauri::Manager;
 use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use utils::config::CONFIG;
+use utils::config::Config;
 pub mod audio;
 pub mod commands;
 pub mod state;
@@ -45,10 +45,10 @@ pub fn init_logger() {
 
     tracing_subscriber::registry().with(filter).with(fmt).init();
 
-    let level = CONFIG.logger.clone().into();
+    let level = Config::get_instance().logger.clone().into();
     reload_handle
         .modify(|f| *f = level)
         .expect("Failed to reload tracing subscriber");
 
-    info!("CWD: {}", std::env::current_dir().unwrap().display());
+    info!("工作目录: {}", std::env::current_dir().unwrap().display());
 }

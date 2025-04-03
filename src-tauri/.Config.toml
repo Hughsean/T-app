@@ -1,6 +1,6 @@
 
 [websocket]
-url = "ws://110.42.59.58:59331"
+url = "ws://localhost:8080"
 frame_size = 960
 
 

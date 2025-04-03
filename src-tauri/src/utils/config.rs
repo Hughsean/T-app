@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::{debug, error, info, level_filters::LevelFilter};
 
 const DEFAULT_CONFIG: &str = r#"
+
 [websocket]
 url = "ws://localhost:8080"
 frame_size = 960
@@ -19,7 +20,7 @@ level = "debug"
 "#;
 
 lazy_static! {
-    pub static ref CONFIG: Arc<Config> = Arc::new(Config::new());
+    static ref CONFIG: Arc<Config> = Arc::new(Config::new());
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,8 +80,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Self {
-        let config_str = std::fs::read_to_string("config.toml").unwrap_or_else(|_| {
+    fn new() -> Self {
+        let config_str = std::fs::read_to_string(".Config.toml").unwrap_or_else(|_| {
             info!(
                 "{} 未发现配置文件, 使用默认配置",
                 std::env::current_dir().unwrap().display()
@@ -88,7 +89,7 @@ impl Config {
             DEFAULT_CONFIG.to_string()
         });
 
-        std::fs::write("Config.toml", config_str.clone()).unwrap_or_else(|_| {
+        std::fs::write(".Config.toml", config_str.clone()).unwrap_or_else(|_| {
             error!("配置文件写入失败: {}", config_str);
         });
 
@@ -108,5 +109,9 @@ impl Config {
 
         debug!("配置: \n{:#?}", config);
         return config;
+    }
+
+    pub fn get_instance() -> Arc<Config> {
+        CONFIG.clone()
     }
 }

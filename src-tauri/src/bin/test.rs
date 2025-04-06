@@ -1,22 +1,22 @@
 use std::{error::Error, io::stdin};
 use tauri_app_lib::{
     audio::{audio::Audio, cache::AudioCache},
-    init_logger,
-    utils::{config::Config, ws::WebsocketProtocol},
+    utils::{config::Config, log::init_logger, ws::WebsocketProtocol},
 };
 use tracing::{error, info};
 
 fn main() -> Result<(), Box<dyn Error>> {
     init_logger();
-    let r = tauri::async_runtime::block_on(async {
+
+    error!("Test");
+
+    if let Err(e) = tauri::async_runtime::block_on(async {
         WebsocketProtocol::get_instance()
             .write()
             .await
             .connect()
             .await
-    });
-
-    if let Err(e) = r {
+    }) {
         info!(
             "websocket( {} ) 连接失败: {}",
             Config::get_instance().websocket.url,

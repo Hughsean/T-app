@@ -5,6 +5,7 @@ import ChatView from '@/views/ChatView.vue'
 import CompanionView from '@/views/CompanionView.vue'
 import VoiceView from '@/views/VoiceView.vue'
 import NumbermanView from '@/views/NumbermanView.vue'
+import TestView from '@/views/TestView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -60,6 +61,15 @@ const router = createRouter({
       component: NumbermanView,
       meta: {
         requiresAuth: true,
+        layout: 'default'
+      }
+    },
+    {
+      path: '/test',
+      name: 'test',
+      component: TestView,
+      meta: {
+        requiresAuth: false,
         layout: 'default'
       }
     }

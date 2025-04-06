@@ -37,6 +37,11 @@
           <el-icon><User /></el-icon>
           <template #title>个人中心</template>
         </el-menu-item>
+        <!-- XXX: 测试页面 -->
+        <el-menu-item index="/test">
+          <el-icon><User /></el-icon>
+          <template #title>测试页面</template>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

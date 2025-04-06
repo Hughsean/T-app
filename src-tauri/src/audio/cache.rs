@@ -12,6 +12,7 @@ use std::sync::RwLock;
 use std::thread::sleep;
 use std::time::Duration;
 use tracing::debug;
+use tracing::error;
 use tracing::info;
 
 const BUFFER_N: usize = 10;
@@ -64,14 +65,20 @@ impl AudioCache {
         // 线程安全的单例模式
         INIT.call_once(move || {
             // 持续向服务器发送音频数据
-            let st = std::thread::spawn(move || {
-                debug!("AudioCache 数据发送线程初始化");
-                while !*stop_flag_.read().unwrap() {
-                    AudioCache::get_instance().write().unwrap().send_audio();
-                    std::thread::sleep(std::time::Duration::from_millis(80));
-                }
-                debug!("AudioCache 数据发送线程退出");
-            });
+            let st = std::thread::Builder::new()
+                .name("音频数据发送线程".into())
+                .spawn(move || {
+                    debug!("AudioCache 数据发送线程初始化");
+                    while !*stop_flag_.read().unwrap() {
+                        AudioCache::get_instance().write().unwrap().send_audio();
+                        std::thread::sleep(std::time::Duration::from_millis(80));
+                    }
+                    debug!("AudioCache 数据发送线程退出");
+                })
+                .inspect_err(|e| {
+                    error!("AudioCache 数据发送线程启动失败: {}", e);
+                })
+                .unwrap();
             *st_ = Some(st);
         });
 

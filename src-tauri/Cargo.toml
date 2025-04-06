@@ -35,5 +35,12 @@ toml = "0.8.20"
 tracing = { version = "0.1.41", features = ["async-await"] }
 tracing-subscriber = { version = "0.3.19", features = ["local-time"] }
 
-[[bin]]
-name = "test"
+# [[bin]]
+# name = "test"
+
+# [profile.release]
+# lto = true
+# # opt-level = "z"
+# panic = "abort"
+# codegen-units = 1
+# debug = false

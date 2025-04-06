@@ -2,7 +2,7 @@
 use crate::audio::func;
 use lazy_static::lazy_static;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, error};
 
 pub type AudioT = Arc<tokio::sync::RwLock<Audio>>;
 
@@ -28,6 +28,11 @@ impl Audio {
         AUDIO.clone()
     }
 
+    fn reset_(&mut self) {
+        self.stop();
+        *self = Self::new();
+    }
+
     pub fn start(&mut self) {
         if !*self.audioStoped.read().unwrap() {
             return;
@@ -36,14 +41,22 @@ impl Audio {
 
         let audioStoped_ = self.audioStoped.clone();
 
-        let in_thread = std::thread::spawn(move || {
-            func::input(audioStoped_);
-        });
+        let in_thread = std::thread::Builder::new()
+            .name("音频输入线程".into())
+            .spawn(move || {
+                func::input(audioStoped_);
+            })
+            .inspect_err(|e| error!("音频输入线程启动失败: {}", e))
+            .unwrap();
 
         let audioStoped_ = self.audioStoped.clone();
-        let out_thread = std::thread::spawn(move || {
-            func::output(audioStoped_);
-        });
+        let out_thread = std::thread::Builder::new()
+            .name("音频输出线程".into())
+            .spawn(move || {
+                func::output(audioStoped_);
+            })
+            .inspect_err(|e| error!("音频输出线程启动失败: {}", e))
+            .unwrap();
 
         self.audioInThread = Some(in_thread);
         self.audioOutThread = Some(out_thread);
@@ -69,5 +82,9 @@ impl Audio {
             thread.join().unwrap();
         }
         debug!("输出线程停止");
+    }
+
+    pub fn reset() {
+        AUDIO.blocking_write().reset_();
     }
 }

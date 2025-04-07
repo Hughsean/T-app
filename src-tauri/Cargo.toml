@@ -5,17 +5,24 @@ description = "A Tauri App"
 authors = ["Hughsean Feng"]
 edition = "2024"
 
+default-run = "tauri-app"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "tauri_app_lib"
+name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.1.1", features = [] }
+
+[features]
+enable_window_event_log = []
+
+# default = ["enable_windows_log"]
+
 
 [dependencies]
 anyhow = "1.0.97"
@@ -23,19 +30,19 @@ cpal = "0.15.3"
 futures-util = "0.3.31"
 lazy_static = "1.5.0"
 opus = "0.3.0"
-rubato = "0.16.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-opener = "2"
+rubato = "0.16.2"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tauri = { version = "2.4.1", features = ["tray-icon"] }
+tauri-plugin-opener = "2.2.6"
 time = { version = "0.3.41", features = ["macros"] }
-tokio = { version = "1.44.1", features = ["time"] }
+tokio = { version = "1.44.2", features = ["macros", "time"] }
 tokio-tungstenite = "0.26.2"
 toml = "0.8.20"
 tracing = { version = "0.1.41", features = ["async-await"] }
 tracing-subscriber = { version = "0.3.19", features = ["local-time"] }
 
-# [[bin]]
+
 # name = "test"
 
 # [profile.release]

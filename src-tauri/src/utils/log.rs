@@ -8,7 +8,7 @@ pub fn init_logger() {
 
     // 配置输出到文件的 fmt 层
     let file_fmt = tracing_subscriber::fmt::layer()
-        .with_target(true)
+        .with_target(false)
         .with_level(true)
         .with_file(true)
         .with_line_number(true)
@@ -21,7 +21,7 @@ pub fn init_logger() {
 
     // 配置输出到控制台的 fmt 层
     let console_fmt = tracing_subscriber::fmt::layer()
-        .with_target(true)
+        .with_target(false)
         .with_level(true)
         .with_file(true)
         .with_line_number(true)

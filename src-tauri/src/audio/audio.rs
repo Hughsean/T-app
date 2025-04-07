@@ -1,16 +1,14 @@
 #![allow(non_snake_case)]
-use crate::audio::func;
+use crate::{audio::func, types::SharedAsyncRwLock};
 use lazy_static::lazy_static;
-use std::sync::Arc;
-use tracing::{debug, error};
-
-pub type AudioT = Arc<tokio::sync::RwLock<Audio>>;
+use std::ops::Not;
+use tracing::{debug, error, info};
 
 lazy_static! {
-    static ref AUDIO: AudioT = Arc::new(tokio::sync::RwLock::new(Audio::new()));
+    static ref AUDIO: SharedAsyncRwLock<Audio> = SharedAsyncRwLock::new(Audio::new());
 }
 pub struct Audio {
-    pub audioStoped: Arc<std::sync::RwLock<bool>>,
+    pub audioStoped: SharedAsyncRwLock<bool>,
     audioInThread: Option<std::thread::JoinHandle<()>>,
     audioOutThread: Option<std::thread::JoinHandle<()>>,
 }
@@ -18,33 +16,34 @@ pub struct Audio {
 impl Audio {
     fn new() -> Self {
         Audio {
-            audioStoped: Arc::new(std::sync::RwLock::new(true)),
+            audioStoped: SharedAsyncRwLock::new(true),
             audioInThread: None,
             audioOutThread: None,
         }
     }
 
-    pub fn get_instance() -> AudioT {
+    pub fn get_instance() -> SharedAsyncRwLock<Audio> {
         AUDIO.clone()
     }
 
-    fn reset_(&mut self) {
-        self.stop();
+    async fn reset_(&mut self) {
+        self.stop().await;
         *self = Self::new();
     }
 
-    pub fn start(&mut self) {
-        if !*self.audioStoped.read().unwrap() {
+    pub async fn start(&mut self) {
+        if self.audioStoped.read().await.not() {
             return;
         }
-        *self.audioStoped.write().unwrap() = false;
+        *self.audioStoped.write().await = false;
 
         let audioStoped_ = self.audioStoped.clone();
 
         let in_thread = std::thread::Builder::new()
             .name("音频输入线程".into())
             .spawn(move || {
-                func::input(audioStoped_);
+                tauri::async_runtime::block_on(func::input(audioStoped_));
+                // func::input(audioStoped_);
             })
             .inspect_err(|e| error!("音频输入线程启动失败: {}", e))
             .unwrap();
@@ -53,7 +52,8 @@ impl Audio {
         let out_thread = std::thread::Builder::new()
             .name("音频输出线程".into())
             .spawn(move || {
-                func::output(audioStoped_);
+                tauri::async_runtime::block_on(func::output(audioStoped_));
+                // func::output(audioStoped_);
             })
             .inspect_err(|e| error!("音频输出线程启动失败: {}", e))
             .unwrap();
@@ -62,29 +62,34 @@ impl Audio {
         self.audioOutThread = Some(out_thread);
     }
 
-    pub fn stop(&mut self) {
+    pub async fn stop(&mut self) {
         debug!("音频停止中...");
-        if *self.audioStoped.read().unwrap() {
+        if *self.audioStoped.read().await {
+            info!("音频已停止，无需再次停止");
             return;
         }
 
-        *self.audioStoped.write().unwrap() = true;
+        *self.audioStoped.write().await = true;
 
         debug!("音频停机信号已发送...");
 
         if let Some(thread) = self.audioInThread.take() {
-            thread.join().unwrap();
+            thread.join().unwrap_or_else(|_e| {
+                error!("输入线程停止失败");
+            });
         }
 
         debug!("输入线程停止");
 
         if let Some(thread) = self.audioOutThread.take() {
-            thread.join().unwrap();
+            thread.join().unwrap_or_else(|_e| {
+                error!("输出线程停止失败");
+            });
         }
         debug!("输出线程停止");
     }
 
-    pub fn reset() {
-        AUDIO.blocking_write().reset_();
+    pub async fn reset() {
+        AUDIO.write().await.reset_().await;
     }
 }

@@ -1,12 +1,17 @@
+use std::ops::Not;
+
 use anyhow::anyhow;
 use commands::{audio::audio_start, greet, open_settings_window};
-use std::sync::{Arc, RwLock};
 use tauri::Manager;
-use tracing::{debug, error};
+use tracing::error;
 pub mod audio;
 pub mod commands;
 pub mod state;
+mod types;
 pub mod utils;
+#[cfg(feature = "enable_window_event_log")]
+use tracing::debug;
+use types::SharedRwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,7 +28,7 @@ pub fn run() {
 }
 
 fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let exit_flag = Arc::new(RwLock::new(false));
+    let exit_flag = SharedRwLock::new(false);
 
     let main_window = app
         .get_webview_window("main")
@@ -39,12 +44,13 @@ fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Er
     settings.on_window_event(move |e| match e {
         tauri::WindowEvent::CloseRequested { api, .. } => {
             // 关闭窗口时，隐藏窗口而不是直接关闭
-            if !*exit.read().unwrap() {
+            if exit.read().unwrap().not() {
                 api.prevent_close();
                 settings_.hide().unwrap();
             }
         }
         _ => {
+            #[cfg(feature = "enable_window_event_log")]
             debug!("设置窗口事件: {:?}", e);
         }
     });
@@ -59,6 +65,7 @@ fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Er
         }
 
         _ => {
+            #[cfg(feature = "enable_window_event_log")]
             debug!("主窗口事件: {:?}", e);
         }
     });

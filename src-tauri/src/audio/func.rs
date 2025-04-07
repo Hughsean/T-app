@@ -1,43 +1,44 @@
 use crate::{
     audio::cache::AudioCache,
+    types::{SharedAsyncMutex, SharedAsyncRwLock},
     utils::{config::Config, device::get_device},
 };
 use cpal::traits::{DeviceTrait, StreamTrait};
-use std::sync::Arc;
 use tracing::error;
 
 fn input_callback() -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
     move |data: &[f32], _: &cpal::InputCallbackInfo| {
         AudioCache::get_instance()
-            .read()
-            .unwrap()
+            .blocking_read()
             .write_input_data(data.to_vec());
     }
 }
 
-pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
-    let stream = get_device(crate::utils::device::DeviceType::Input)
-        .inspect_err(|e| error!("获取输入设备失败: {}", e))
-        .unwrap()
-        .build_input_stream(
-            &Config::get_instance()
-                .input_device
-                .raw_config
-                .clone()
-                .unwrap()
-                .into(),
-            input_callback(),
-            |e| {
-                error!("Error: {}", e);
-            },
-            None,
-        )
-        .unwrap();
+pub async fn input(stopflag: SharedAsyncRwLock<bool>) {
+    let stream = SharedAsyncMutex::new(
+        get_device(crate::utils::device::DeviceType::Input)
+            .inspect_err(|e| error!("获取输入设备失败: {}", e))
+            .unwrap()
+            .build_input_stream(
+                &Config::get_instance()
+                    .input_device
+                    .raw_config
+                    .clone()
+                    .unwrap()
+                    .into(),
+                input_callback(),
+                |e| {
+                    error!("Error: {}", e);
+                },
+                None,
+            )
+            .unwrap(),
+    );
 
-    stream.play().unwrap();
+    stream.lock().await.play().unwrap();
 
     loop {
-        if *stopflag.read().unwrap() {
+        if *stopflag.read().await {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -45,15 +46,15 @@ pub fn input(stopflag: Arc<std::sync::RwLock<bool>>) {
 }
 
 fn output_callback(
-    stopflag: Arc<std::sync::RwLock<bool>>,
+    stopflag: SharedAsyncRwLock<bool>,
 ) -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
         let mut n = 0;
         loop {
-            if *stopflag.read().unwrap() {
+            if *stopflag.blocking_read() {
                 break;
             }
-            if let Some(recv_data) = AudioCache::get_instance().read().unwrap().read(data.len()) {
+            if let Some(recv_data) = AudioCache::get_instance().blocking_read().read(data.len()) {
                 data.copy_from_slice(&recv_data);
                 break;
             }
@@ -67,29 +68,31 @@ fn output_callback(
     }
 }
 
-pub fn output(stopflag: Arc<std::sync::RwLock<bool>>) {
-    let stream = get_device(crate::utils::device::DeviceType::Output)
-        .inspect_err(|e| error!("获取输出设备失败: {}", e))
-        .unwrap()
-        .build_output_stream(
-            &Config::get_instance()
-                .output_device
-                .raw_config
-                .clone()
-                .unwrap()
-                .into(),
-            output_callback(stopflag.clone()),
-            |e| {
-                error!("Error: {}", e);
-            },
-            None,
-        )
-        .unwrap();
+pub async fn output(stopflag: SharedAsyncRwLock<bool>) {
+    let stream = SharedAsyncMutex::new(
+        get_device(crate::utils::device::DeviceType::Output)
+            .inspect_err(|e| error!("获取输出设备失败: {}", e))
+            .unwrap()
+            .build_output_stream(
+                &Config::get_instance()
+                    .output_device
+                    .raw_config
+                    .clone()
+                    .unwrap()
+                    .into(),
+                output_callback(stopflag.clone()),
+                |e| {
+                    error!("Error: {}", e);
+                },
+                None,
+            )
+            .unwrap(),
+    );
 
-    stream.play().unwrap();
+    stream.lock().await.play().unwrap();
 
     loop {
-        if *stopflag.read().unwrap() {
+        if *stopflag.read().await {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));

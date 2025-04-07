@@ -6,7 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-let click = async () => {
+const click = async () => {
   console.log("click");
 
   // const appWebview = getCurrentWebviewWindow();
@@ -19,5 +19,9 @@ let click = async () => {
     .catch((err) => {
       console.log("err", err);
     });
+};
+
+const open = async () => {
+  
 };
 </script>

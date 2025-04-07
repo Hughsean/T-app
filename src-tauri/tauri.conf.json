@@ -18,7 +18,8 @@
         "center": true,
         "maximized": true,
         "label": "main",
-        "visible": false
+        "visible": false,
+        "devtools": true
       },
       {
         "title": "设置",
@@ -30,7 +31,6 @@
         "label": "settings",
         "visible": false,
         "minimizable": false,
-        "alwaysOnTop": true,
         "url": "settings.html"
       }
     ],

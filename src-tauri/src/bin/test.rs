@@ -1,14 +1,12 @@
-use std::{error::Error, io::stdin};
-use tauri_app_lib::{
-    audio::{audio::Audio, cache::AudioCache},
+use app_lib::{
+    audio::audio::Audio,
     utils::{config::Config, log::init_logger, ws::WebsocketProtocol},
 };
+use std::{error::Error, io::stdin};
 use tracing::{error, info};
 
 fn main() -> Result<(), Box<dyn Error>> {
     init_logger();
-
-    error!("Test");
 
     if let Err(e) = tauri::async_runtime::block_on(async {
         WebsocketProtocol::get_instance()
@@ -25,10 +23,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let _ = AudioCache::get_instance();
-
     tauri::async_runtime::block_on(async {
-        Audio::get_instance().write().await.start();
+        Audio::get_instance().write().await.start().await;
 
         let mut input = String::new();
         match stdin().read_line(&mut input) {
@@ -38,7 +34,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(error) => error!("error: {error}"),
         }
 
-        Audio::get_instance().write().await.stop();
+        Audio::get_instance().write().await.stop().await;
     });
+
     Ok(())
 }

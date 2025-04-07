@@ -1,59 +1,48 @@
+use super::config::Config;
 use crate::audio::cache::AudioCache;
-use crate::utils::config::Config;
+use crate::types::SharedAsyncRwLock;
+use crate::types::SharedMutex;
+use crate::utils::controller::Controller;
 use futures_util::{SinkExt, StreamExt};
 use lazy_static::lazy_static;
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::ops::Not;
+use std::sync::Arc;
 use tokio::sync::Notify;
-use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::debug;
 use tracing::info;
 
-//TODO: 控制帧响应
-pub enum ListenMode {
-    Auto,
-    Manual,
-    RealTime,
-}
-
-pub enum Ctrl {
-    Start,
-    Stop,
-    Abort,
-    Audio(ListenMode),
-}
-
 pub struct WebsocketProtocol {
     websocket_url: String,
-    connected: Arc<RwLock<bool>>,
+    connected: SharedAsyncRwLock<bool>,
     hello_received: Arc<Notify>,
     sender: Option<mpsc::UnboundedSender<Message>>,
-    recver: Arc<Mutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>>,
-    session_id: Arc<RwLock<String>>,
+    recver: SharedMutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>,
+    session_id: SharedAsyncRwLock<String>,
 }
 
 lazy_static! {
-    static ref WEBSOCKET_PROTOCOL: Arc<RwLock<WebsocketProtocol>> = Arc::new(RwLock::new(
-        WebsocketProtocol::new(Config::get_instance().websocket.url.clone())
-    ));
+    static ref WEBSOCKET_PROTOCOL: SharedAsyncRwLock<WebsocketProtocol> = SharedAsyncRwLock::new(
+        WebsocketProtocol::new(Config::get_instance().websocket.url.clone(),)
+    );
 }
 
 impl WebsocketProtocol {
     fn new(websocket_url: String) -> Self {
         Self {
             websocket_url,
-            connected: Arc::new(RwLock::new(false)),
+            connected: SharedAsyncRwLock::new(false),
             hello_received: Arc::new(Notify::new()),
             sender: None,
-            recver: Arc::new(Mutex::new(None)),
-            session_id: Arc::new(RwLock::new(String::new())),
+            recver: SharedMutex::new(None),
+            session_id: SharedAsyncRwLock::new(String::new()),
         }
     }
 
-    pub fn get_instance() -> Arc<RwLock<WebsocketProtocol>> {
+    pub fn get_instance() -> SharedAsyncRwLock<WebsocketProtocol> {
         WEBSOCKET_PROTOCOL.clone()
     }
 
@@ -74,28 +63,38 @@ impl WebsocketProtocol {
                 let (_tx, rx) = mpsc::unbounded_channel();
                 let id = self.session_id.clone();
 
-                self.recver = Arc::new(Mutex::new(Some(rx)));
+                self.recver = SharedMutex::new(Some(rx));
 
                 tokio::spawn(async move {
                     while let Some(Ok(msg)) = read.next().await {
                         match msg {
                             Message::Text(text) => {
                                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    if data["type"] == "hello" {
+                                    if data["type"] == "hello" && connected.read().await.not() {
                                         hello_received.notify_one();
                                         *connected.write().await = true;
                                         *id.write().await =
                                             data["session_id"].as_str().unwrap_or("").to_string();
                                         debug!("session_id = {}", id.read().await);
                                     }
-                                    debug!("JSON:\n{:#}", data);
+                                    // debug!("Received message:\n{:#?}", data);
+
+                                    debug!("Received message:\n{:#}", data);
+                                    let frame = crate::utils::frame::Frame::from(data.clone());
+
+                                    Controller::get_instance()
+                                        .write()
+                                        .await
+                                        .push_frame(frame)
+                                        .await;
                                 }
                             }
                             Message::Binary(bytes) => {
                                 AudioCache::get_instance()
                                     .read()
-                                    .unwrap()
-                                    .write_output_data(bytes.to_vec());
+                                    .await
+                                    .write_output_data(bytes.to_vec())
+                                    .await;
                             }
                             _ => {
                                 debug!("Received message:\n{:#?}", msg);

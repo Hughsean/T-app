@@ -16,6 +16,8 @@
     "@vueuse/components": "13.0.0",
     "@vueuse/core": "13.0.0",
     "axios": "1.8.4",
+    "crypto-js": "^4.2.0",
+    "duix-guiji-light": "^0.1.0",
     "ebml": "3.0.0",
     "element-plus": "2.9.7",
     "eventemitter3": "5.0.1",

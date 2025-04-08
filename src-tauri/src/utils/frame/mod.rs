@@ -1,11 +1,13 @@
 use listen::ListenFrame;
 use serde_json::Value;
+use tracing::debug;
 use tts::TtsFrame;
 
 pub mod listen;
 pub mod tts;
 
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum Frame {
     ListenFrame(ListenFrame),
     TtsFrame(TtsFrame),
@@ -29,7 +31,10 @@ impl From<Value> for Frame {
             "tts" => serde_json::from_value::<TtsFrame>(json)
                 .map(|e| Frame::TtsFrame(e))
                 .unwrap_or(Frame::Error),
-            _ => Frame::Error,
+            _ => {
+                debug!("未知帧类型:\n {:#}", json);
+                Frame::Error
+            }
         }
     }
 }

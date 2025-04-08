@@ -6,15 +6,15 @@ use crate::{
 use cpal::traits::{DeviceTrait, StreamTrait};
 use tracing::error;
 
-fn input_callback() -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
+fn input_callback(
+    audio_cacahe: SharedAsyncRwLock<AudioCache>,
+) -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-        AudioCache::get_instance()
-            .blocking_read()
-            .write_input_data(data.to_vec());
+        audio_cacahe.blocking_read().write_input_data(data.to_vec());
     }
 }
 
-pub async fn input(stopflag: SharedAsyncRwLock<bool>) {
+pub async fn input(stopflag: SharedAsyncRwLock<bool>, audio_cacahe: SharedAsyncRwLock<AudioCache>) {
     let stream = SharedAsyncMutex::new(
         get_device(crate::utils::device::DeviceType::Input)
             .inspect_err(|e| error!("获取输入设备失败: {}", e))
@@ -26,7 +26,7 @@ pub async fn input(stopflag: SharedAsyncRwLock<bool>) {
                     .clone()
                     .unwrap()
                     .into(),
-                input_callback(),
+                input_callback(audio_cacahe),
                 |e| {
                     error!("Error: {}", e);
                 },
@@ -47,6 +47,7 @@ pub async fn input(stopflag: SharedAsyncRwLock<bool>) {
 
 fn output_callback(
     stopflag: SharedAsyncRwLock<bool>,
+    audio_cacahe: SharedAsyncRwLock<AudioCache>,
 ) -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
         let mut n = 0;
@@ -54,7 +55,7 @@ fn output_callback(
             if *stopflag.blocking_read() {
                 break;
             }
-            if let Some(recv_data) = AudioCache::get_instance().blocking_read().read(data.len()) {
+            if let Some(recv_data) = audio_cacahe.blocking_read().read(data.len()) {
                 data.copy_from_slice(&recv_data);
                 break;
             }
@@ -68,7 +69,10 @@ fn output_callback(
     }
 }
 
-pub async fn output(stopflag: SharedAsyncRwLock<bool>) {
+pub async fn output(
+    stopflag: SharedAsyncRwLock<bool>,
+    audio_cacahe: SharedAsyncRwLock<AudioCache>,
+) {
     let stream = SharedAsyncMutex::new(
         get_device(crate::utils::device::DeviceType::Output)
             .inspect_err(|e| error!("获取输出设备失败: {}", e))
@@ -80,7 +84,7 @@ pub async fn output(stopflag: SharedAsyncRwLock<bool>) {
                     .clone()
                     .unwrap()
                     .into(),
-                output_callback(stopflag.clone()),
+                output_callback(stopflag.clone(), audio_cacahe),
                 |e| {
                     error!("Error: {}", e);
                 },

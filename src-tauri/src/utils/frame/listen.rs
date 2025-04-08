@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ListenMode {
     Auto,
@@ -22,7 +22,7 @@ impl ToString for ListenMode {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum ListenState {
     Start,
@@ -30,7 +30,7 @@ pub enum ListenState {
     Detect,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ListenFrame {
     pub state: ListenState,
     pub mode: Option<ListenMode>,

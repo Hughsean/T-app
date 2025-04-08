@@ -1,10 +1,8 @@
-use super::config::Config;
 use crate::audio::cache::AudioCache;
+use crate::audio::controller::Controller;
 use crate::types::SharedAsyncRwLock;
 use crate::types::SharedMutex;
-use crate::utils::controller::Controller;
 use futures_util::{SinkExt, StreamExt};
-use lazy_static::lazy_static;
 use serde_json::json;
 use std::ops::Not;
 use std::sync::Arc;
@@ -24,14 +22,8 @@ pub struct WebsocketProtocol {
     session_id: SharedAsyncRwLock<String>,
 }
 
-lazy_static! {
-    static ref WEBSOCKET_PROTOCOL: SharedAsyncRwLock<WebsocketProtocol> = SharedAsyncRwLock::new(
-        WebsocketProtocol::new(Config::get_instance().websocket.url.clone(),)
-    );
-}
-
 impl WebsocketProtocol {
-    fn new(websocket_url: String) -> Self {
+    pub fn new(websocket_url: String) -> Self {
         Self {
             websocket_url,
             connected: SharedAsyncRwLock::new(false),
@@ -42,11 +34,11 @@ impl WebsocketProtocol {
         }
     }
 
-    pub fn get_instance() -> SharedAsyncRwLock<WebsocketProtocol> {
-        WEBSOCKET_PROTOCOL.clone()
-    }
-
-    pub async fn connect(&mut self) -> Result<String, String> {
+    pub async fn connect(
+        &mut self,
+        audio_cache: SharedAsyncRwLock<AudioCache>,
+        controller: SharedAsyncRwLock<Controller>,
+    ) -> Result<String, String> {
         if *self.connected.read().await {
             return Ok(self.session_id.read().await.clone());
         }
@@ -77,24 +69,26 @@ impl WebsocketProtocol {
                                             data["session_id"].as_str().unwrap_or("").to_string();
                                         debug!("session_id = {}", id.read().await);
                                     }
-                                    // debug!("Received message:\n{:#?}", data);
 
-                                    debug!("Received message:\n{:#}", data);
                                     let frame = crate::utils::frame::Frame::from(data.clone());
 
-                                    Controller::get_instance()
-                                        .write()
-                                        .await
-                                        .push_frame(frame)
-                                        .await;
+                                    debug!("控制帧:\n{:#?}", frame);
+
+                                    controller.write().await.push_frame(frame).await;
                                 }
                             }
                             Message::Binary(bytes) => {
-                                AudioCache::get_instance()
+                                audio_cache
                                     .read()
                                     .await
                                     .write_output_data(bytes.to_vec())
                                     .await;
+                            }
+                            Message::Close(frame) => {
+                                debug!("WebSocket 连接关闭: {:?}", frame);
+                                // *connected.write().await = false;
+                                // controller.write().await.stop().await;
+                                // TODO: 处理关闭连接的逻辑
                             }
                             _ => {
                                 debug!("Received message:\n{:#?}", msg);
@@ -171,17 +165,6 @@ impl WebsocketProtocol {
         } else {
             Err("WebSocket未连接".to_string())
         }
-    }
-
-    pub async fn ctrl(&self, _ctrl: String) -> Result<(), String> {
-        // if let Some(sender) = &self.sender {
-        //     sender
-        //         .send(Message::Text(ctrl.into()))
-        //         .map_err(|_| "发送控制消息失败".to_string())
-        // } else {
-        //     Err("WebSocket未连接".to_string())
-        // }
-        unimplemented!()
     }
 
     pub async fn close(&self) -> Result<(), String> {

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum TtsState {
     Start,
@@ -24,7 +24,7 @@ impl ToString for TtsState {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub struct TtsFrame {
     pub state: TtsState,

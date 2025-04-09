@@ -32,7 +32,8 @@ pub async fn input(stopflag: SharedAsyncRwLock<bool>, audio_cacahe: SharedAsyncR
                 },
                 None,
             )
-            .unwrap(),
+            .unwrap()
+            .into(),
     );
 
     stream.lock().await.play().unwrap();
@@ -90,7 +91,8 @@ pub async fn output(
                 },
                 None,
             )
-            .unwrap(),
+            .unwrap()
+            .into(),
     );
 
     stream.lock().await.play().unwrap();

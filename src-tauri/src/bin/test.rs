@@ -5,13 +5,15 @@ use tracing::{error, info};
 fn main() -> Result<(), Box<dyn Error>> {
     init_logger();
 
-    tauri::async_runtime::block_on(async {
-        let state = app_lib::audio::AudioState::new(app_lib::audio::AudioState_::new().await);
-
-        state.write().await.ws_connect().await.unwrap();
-
-        state.read().await.audio_start().await;
-
+    let _ = tauri::async_runtime::block_on(async {
+        let state =
+            app_lib::audio::AudioState::new(app_lib::audio::AudioState_::new().await.into());
+        // debug!("AudioState: {:?}", state);
+        error!("======================");
+        state.write().await.ws_connect().await?;
+        error!("======================");
+        state.read().await.start().await?;
+        error!("======================");
         let mut input = String::new();
         match stdin().read_line(&mut input) {
             Ok(n) => {
@@ -20,8 +22,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(error) => error!("error: {error}"),
         }
 
-        state.write().await.audio_stop().await;
-    });
+        state.write().await.stop().await?;
+        Ok::<(), String>(())
+    })
+    .inspect_err(|_| error!("error"));
 
     Ok(())
 }

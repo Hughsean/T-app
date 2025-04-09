@@ -1,9 +1,18 @@
 // TODO
-use crate::types::SharedAsyncRwLock;
+use crate::audio::{AudioState, AudioState_};
 
-pub type AppState = SharedAsyncRwLock<AppState_>;
-pub struct AppState_ {
-    pub session_id: Option<String>,
-    pub user_id: Option<String>,
-    pub token: Option<String>,
+pub struct AppState {
+    pub audio_starte: AudioState,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        tauri::async_runtime::block_on(Self::new_async())
+    }
+
+    async fn new_async() -> Self {
+        Self {
+            audio_starte: AudioState::new(AudioState_::new().await.into()),
+        }
+    }
 }

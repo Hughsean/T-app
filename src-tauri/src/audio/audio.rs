@@ -4,7 +4,7 @@ use std::ops::Not;
 use tracing::{debug, error, info};
 
 pub struct Audio {
-    pub audioStoped: SharedAsyncRwLock<bool>,
+    pub is_audio_stoped: SharedAsyncRwLock<bool>,
     audioInThread: Option<std::thread::JoinHandle<()>>,
     audioOutThread: Option<std::thread::JoinHandle<()>>,
 }
@@ -12,25 +12,19 @@ pub struct Audio {
 impl Audio {
     pub fn new() -> Self {
         Audio {
-            audioStoped: SharedAsyncRwLock::new(true),
+            is_audio_stoped: SharedAsyncRwLock::new(true.into()),
             audioInThread: None,
             audioOutThread: None,
         }
     }
 
-    #[allow(dead_code)]
-    async fn reset_(&mut self) {
-        self.stop().await;
-        *self = Self::new();
-    }
-
     pub async fn start(&mut self, audio_cache: SharedAsyncRwLock<crate::audio::cache::AudioCache>) {
-        if self.audioStoped.read().await.not() {
+        if self.is_audio_stoped.read().await.not() {
             return;
         }
-        *self.audioStoped.write().await = false;
+        *self.is_audio_stoped.write().await = false;
 
-        let audioStoped_ = self.audioStoped.clone();
+        let audioStoped_ = self.is_audio_stoped.clone();
 
         let audio_cache_ = audio_cache.clone();
 
@@ -43,7 +37,7 @@ impl Audio {
             .inspect_err(|e| error!("音频输入线程启动失败: {}", e))
             .unwrap();
 
-        let audioStoped_ = self.audioStoped.clone();
+        let audioStoped_ = self.is_audio_stoped.clone();
         let out_thread = std::thread::Builder::new()
             .name("音频输出线程".into())
             .spawn(move || {
@@ -57,14 +51,13 @@ impl Audio {
         self.audioOutThread = Some(out_thread);
     }
 
-    pub async fn stop(&mut self) {
+    pub async fn close(&mut self) {
         debug!("音频停止中...");
-        if *self.audioStoped.read().await {
+        if *self.is_audio_stoped.read().await {
             info!("音频已停止，无需再次停止");
             return;
         }
-
-        *self.audioStoped.write().await = true;
+        self.is_audio_stoped.write().await.clone_from(&true);
 
         debug!("音频停机信号已发送...");
 
@@ -82,5 +75,14 @@ impl Audio {
             });
         }
         debug!("输出线程停止");
+    }
+}
+
+impl Drop for Audio {
+    fn drop(&mut self) {
+        tokio::task::block_in_place(|| {
+            tauri::async_runtime::block_on(self.close());
+            debug!("音频实例释放资源")
+        })
     }
 }

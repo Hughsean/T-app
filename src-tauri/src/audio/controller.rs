@@ -3,91 +3,101 @@ use crate::{
     types::SharedAsyncRwLock,
     utils::frame::{Frame, tts::TtsState},
 };
-use std::collections::VecDeque;
-use tracing::{debug, error};
+use std::ops::Not;
+use tracing::{debug, error, warn};
 
 pub struct Controller {
-    pub frame_buffer: VecDeque<Frame>,
     worker_thread: Option<tauri::async_runtime::JoinHandle<()>>,
-    stop_flag: SharedAsyncRwLock<bool>,
+    is_stopped: SharedAsyncRwLock<bool>,
 }
 
 impl Controller {
-    pub async fn new(audio_cache: SharedAsyncRwLock<AudioCache>) -> SharedAsyncRwLock<Self> {
-        let stop_flag = SharedAsyncRwLock::new(false);
-        let stop_flag_ = stop_flag.clone();
+    pub async fn new() -> SharedAsyncRwLock<Self> {
+        SharedAsyncRwLock::new(
+            Self {
+                worker_thread: None,
+                is_stopped: SharedAsyncRwLock::new(true.into()),
+            }
+            .into(),
+        )
+    }
 
-        let shared_controller = SharedAsyncRwLock::new(Self {
-            frame_buffer: VecDeque::new(),
-            worker_thread: None,
-            stop_flag,
-        });
+    pub async fn start(
+        controller: SharedAsyncRwLock<Self>,
+        audio_cache: SharedAsyncRwLock<AudioCache>,
+        ws: SharedAsyncRwLock<crate::utils::ws::WebsocketProtocol>,
+    ) {
+        if controller.read().await.is_stopped.read().await.not() {
+            warn!("已拒绝重复启动控制器工作线程");
+            return;
+        }
+        controller
+            .write()
+            .await
+            .is_stopped
+            .write()
+            .await
+            .clone_from(&false);
 
-        let shared_controller_ = shared_controller.clone();
+        let is_stopped = controller.read().await.is_stopped.clone();
 
-        shared_controller
+        controller
             .write()
             .await
             .worker_thread
             .replace(tauri::async_runtime::spawn(async move {
                 loop {
-                    if *stop_flag_.read().await {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(70)).await;
+                    if *is_stopped.read().await {
                         break;
                     }
-
-                    if let Some(frame) = shared_controller_.write().await.frame_buffer.pop_front() {
+                    if let Some(frame) = ws.write().await.read_text_frame().await {
                         match frame {
                             Frame::TtsFrame(frame) => {
                                 match frame.state {
                                     TtsState::Start => {
-                                        // TODO
+                                        // XXX 后续考虑增加功能
                                     }
                                     TtsState::Stop => {
-                                        // TODO
-                                        // AudioCache::get_instance()
-                                        //     .write()
-                                        //     .await
-                                        //     .session_stop()
-                                        //     .await;
+                                        // XXX 后续考虑增加功能
                                     }
                                     TtsState::SentenceStart => {
-                                        // let ac= AudioCache::get_instance().write().await;;
                                         audio_cache.write().await.session_stop().await;
                                         audio_cache.write().await.session_start();
                                         debug!("句子开始");
                                     }
                                     TtsState::SentenceEnd => debug!("句子结束"),
                                 }
-                                // println!("视频帧: {:?}", frame);
                             }
                             Frame::ListenFrame(_frame) => {}
                             Frame::Error => {}
                         }
                     };
-
-                    // 这里是工作线程的逻辑
-                    tokio::time::sleep(tokio::time::Duration::from_millis(70)).await;
                 }
             }));
-        shared_controller
     }
 
-    pub async fn push_frame(&mut self, frame: Frame) {
-        self.frame_buffer.push_back(frame);
-    }
+    pub async fn close(&mut self) {
+        if *self.is_stopped.read().await {
+            warn!("已拒绝重复停止控制器工作线程");
+            return;
+        }
+        self.is_stopped.write().await.clone_from(&true);
 
-    pub async fn stop(&mut self) {
-        *self.stop_flag.write().await = true;
         if let Some(wt) = self.worker_thread.take() {
             if let Err(e) = wt.await {
                 error!("控制器工作线程停止失败: {}", e);
-            } else {
-                debug!("控制器工作线程已停止");
             }
-        } else {
             debug!("控制器工作线程已停止");
         }
-        // FIXME
-        // Audio::get_instance().write().await.stop().await;
+    }
+}
+
+impl Drop for Controller {
+    fn drop(&mut self) {
+        tokio::task::block_in_place(|| {
+            tauri::async_runtime::block_on(self.close());
+            debug!("控制器实例释放资源")
+        })
     }
 }

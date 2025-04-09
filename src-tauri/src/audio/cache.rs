@@ -49,99 +49,109 @@ pub struct AudioCache {
 }
 
 impl AudioCache {
-    pub async fn new(ws: SharedAsyncRwLock<WebsocketProtocol>) -> SharedAsyncRwLock<Self> {
+    pub async fn new() -> SharedAsyncRwLock<Self> {
         debug!("AudioCache 初始化");
-        let stop_flag = SharedAsyncRwLock::new(false);
-        let stop_flag_ = stop_flag.clone();
 
-        let shared_audio_cache = SharedAsyncRwLock::new(Self {
-            inputRate: Config::get_instance().input_device.sample_rate,
-            outputRate: Config::get_instance().output_device.sample_rate,
-            rawInPCMData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
-            resampledInData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
-            opusInData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
+        SharedAsyncRwLock::new(
+            Self {
+                inputRate: Config::get_instance().input_device.sample_rate,
+                outputRate: Config::get_instance().output_device.sample_rate,
+                rawInPCMData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
+                resampledInData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
+                opusInData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
 
-            rawOutPCMData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
-            decodedOutData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
-            opusOutData: SharedAsyncRwLock::new(Vec::with_capacity(
-                Config::get_instance().websocket.frame_size * BUFFER_N,
-            )),
+                rawOutPCMData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
+                decodedOutData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
+                opusOutData: SharedAsyncRwLock::new(
+                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
+                        .into(),
+                ),
 
-            opsuEncoder: SharedAsyncMutex::new(
-                opus::Encoder::new(
-                    Config::get_instance().opus.sample_rate as u32,
-                    opus::Channels::Mono,
-                    opus::Application::Audio,
-                )
-                .unwrap(),
-            ),
-            opsuDecoder: SharedAsyncMutex::new(
-                opus::Decoder::new(
-                    Config::get_instance().opus.sample_rate as u32,
-                    opus::Channels::Mono,
-                )
-                .unwrap(),
-            ),
-            sendThread: None,
-            stop: stop_flag,
-            isSessionActive: false,
-            sessionInit: Once::new(),
-        });
+                opsuEncoder: SharedAsyncMutex::new(
+                    opus::Encoder::new(
+                        Config::get_instance().opus.sample_rate as u32,
+                        opus::Channels::Mono,
+                        opus::Application::Audio,
+                    )
+                    .unwrap()
+                    .into(),
+                ),
+                opsuDecoder: SharedAsyncMutex::new(
+                    opus::Decoder::new(
+                        Config::get_instance().opus.sample_rate as u32,
+                        opus::Channels::Mono,
+                    )
+                    .unwrap()
+                    .into(),
+                ),
+                sendThread: None,
+                stop: SharedAsyncRwLock::new(true.into()),
+                isSessionActive: false,
+                sessionInit: Once::new(),
+            }
+            .into(),
+        )
+    }
 
-        let shared_audio_cache_ = shared_audio_cache.clone();
+    pub async fn start(
+        audio_cache: SharedAsyncRwLock<Self>,
+        ws: SharedAsyncRwLock<WebsocketProtocol>,
+    ) {
+        let shared_audio_cache = audio_cache.clone();
+        let stop_flag = audio_cache.read().await.stop.clone();
 
-        shared_audio_cache
+        audio_cache
             .write()
             .await
             .sendThread
             .replace(tauri::async_runtime::spawn(async move {
                 debug!("AudioCache 数据发送线程初始化");
-                while !*stop_flag_.read().await {
+                while !*stop_flag.read().await {
                     let ws_ = ws.clone();
-                    // debug!("AudioCache 数据发送线程运行中...");
-                    shared_audio_cache_.write().await.send_audio(ws_).await;
+                    shared_audio_cache.read().await.send_audio(ws_).await;
                     std::thread::sleep(std::time::Duration::from_millis(60));
                 }
                 debug!("AudioCache 数据发送线程退出");
             }));
-        // 线程安全的单例模式
+    }
 
-        shared_audio_cache
+    pub async fn reset(&mut self) {
+        self.stop.write().await.clone_from(&true);
+        if let Some(st) = self.sendThread.take() {
+            st.await
+                .inspect_err(|e| error!("AudioCache 数据发送线程退出失败: {}", e))
+                .unwrap();
+        }
+        self.clear().await;
     }
 }
 
 impl Drop for AudioCache {
     fn drop(&mut self) {
-        *self.stop.blocking_write() = true;
-
-        if let Some(st) = self.sendThread.take() {
-            tauri::async_runtime::block_on(async {
-                st.await
-                    .inspect_err(|e| error!("AudioCache 数据发送线程退出失败: {}", e))
-                    .unwrap();
-            });
-        }
+        tokio::task::block_in_place(|| {
+            tauri::async_runtime::block_on(self.reset());
+            debug!("AudioCache 释放资源")
+        })
     }
 }
 
 // input
 impl AudioCache {
-    // pub fn set_input_rate(&mut self, rate: u32) {
-    //     // self.resampler.s
-    //     // self.resampler.
-    //     self.input_rate = Some(rate);
-    // }
-
     pub fn write_input_data(&self, data: Vec<f32>) {
         self.rawInPCMData.blocking_write().append(&mut data.clone());
     }
@@ -186,7 +196,7 @@ impl AudioCache {
         }
     }
 
-    async fn encode(&mut self) {
+    async fn encode(&self) {
         let len = self.resampledInData.read().await.len();
         if len >= Config::get_instance().websocket.frame_size {
             let mut encoder = self.opsuEncoder.lock().await;
@@ -216,7 +226,7 @@ impl AudioCache {
         }
     }
 
-    async fn send_audio(&mut self, ws: SharedAsyncRwLock<WebsocketProtocol>) {
+    async fn send_audio(&self, ws: SharedAsyncRwLock<WebsocketProtocol>) {
         let len = self.opusInData.read().await.len();
         if len > 0 {
             let mut opusdata = self.opusInData.write().await;
@@ -237,12 +247,6 @@ impl AudioCache {
 
 // output
 impl AudioCache {
-    // pub fn set_output_rate(&mut self, rate: u32) {
-    //     // self.resampler.s
-    //     // self.resampler.
-    //     self.output_rate = Some(rate);
-    // }
-
     pub async fn write_output_data(&self, data: Vec<u8>) {
         self.opusOutData.write().await.push(data);
     }
@@ -311,7 +315,7 @@ impl AudioCache {
         // 新一轮会话，进行数据接收缓存
         self.sessionInit.call_once(|| {
             // 会话开始先等待一段时间，使数据缓存填充一些数据，防止音频卡顿
-            std::thread::sleep(Duration::from_millis(3000));
+            std::thread::sleep(Duration::from_millis(300));
             debug!("会话开始，进行数据接收缓存");
         });
 
@@ -339,6 +343,9 @@ impl AudioCache {
     // 目前输入音频数据不需要控制
 
     pub async fn session_stop(&mut self) {
+        if self.isSessionActive.not() {
+            return;
+        }
         self.isSessionActive = false;
         // 重置会话状态
         self.rawOutPCMData.write().await.clear();
@@ -351,5 +358,14 @@ impl AudioCache {
         self.sessionInit = Once::new();
         self.isSessionActive = true;
         debug!("会话开始");
+    }
+
+    async fn clear(&self) {
+        self.rawInPCMData.write().await.clear();
+        self.resampledInData.write().await.clear();
+        self.opusInData.write().await.clear();
+        self.rawOutPCMData.write().await.clear();
+        self.decodedOutData.write().await.clear();
+        self.opusOutData.write().await.clear();
     }
 }

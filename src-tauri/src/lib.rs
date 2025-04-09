@@ -1,7 +1,10 @@
 use std::ops::Not;
 
 use anyhow::anyhow;
-use commands::{audio::audio_start, greet, open_settings_window};
+use commands::{
+    audio::{audio_start, audio_stop},
+    greet, open_settings_window,
+};
 use tauri::Manager;
 use tracing::error;
 pub mod audio;
@@ -17,10 +20,12 @@ use types::SharedRwLock;
 pub fn run() {
     tauri::Builder::default()
         .setup(setup)
+        .manage(state::AppState::new())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             audio_start,
+            audio_stop,
             open_settings_window
         ])
         .run(tauri::generate_context!())
@@ -28,7 +33,7 @@ pub fn run() {
 }
 
 fn setup(app: &mut tauri::App) -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let exit_flag = SharedRwLock::new(false);
+    let exit_flag = SharedRwLock::new(false.into());
 
     let main_window = app
         .get_webview_window("main")

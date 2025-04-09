@@ -12,7 +12,7 @@ use crate::{
 use audio::Audio;
 use cache::AudioCache;
 use controller::Controller;
-use tracing::debug;
+use tracing::{debug, info, warn};
 //
 //
 //
@@ -23,20 +23,22 @@ pub struct AudioState_ {
     audio_cache: SharedAsyncRwLock<AudioCache>,
     controller: SharedAsyncRwLock<Controller>,
     ws: SharedAsyncRwLock<WebsocketProtocol>,
+    stopped: SharedAsyncRwLock<bool>,
 }
 
 impl AudioState_ {
     pub async fn new() -> Self {
         Self {
             audio: SharedAsyncRwLock::new(Audio::new().into()),
-            audio_cache: AudioCache::new().await,
-            controller: Controller::new().await,
+            audio_cache: SharedAsyncRwLock::new(AudioCache::new().into()),
+            controller: SharedAsyncRwLock::new(Controller::new().into()),
             ws: SharedAsyncRwLock::new(
                 WebsocketProtocol::new(Config::get_instance().websocket.url.clone()).into(),
             ),
+            stopped: SharedAsyncRwLock::new(true.into()),
         }
     }
-    
+
     pub async fn ws_connect(&self) -> Result<String, String> {
         self.ws
             .write()
@@ -46,7 +48,14 @@ impl AudioState_ {
             .map_err(|e| e.to_string())
     }
 
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&mut self) -> Result<(), String> {
+        if self.stopped.read().await.not() {
+            debug!("对话已开始，拒绝再次启动");
+            return Ok(());
+        }
+
+        let notify = self.ws.read().await.get_notify();
+
         if self.ws.read().await.is_connected().await.not() {
             // XXX id 留存，如果需要使用
             debug!("WebSocket 连接中...");
@@ -64,16 +73,40 @@ impl AudioState_ {
         )
         .await;
 
+        let controller = self.controller.clone();
+        let audio = self.audio.clone();
+        let audio_cache = self.audio_cache.clone();
+        let ws = self.ws.clone();
+        let stopped = self.stopped.clone();
+        tauri::async_runtime::spawn(async move {
+            notify.notified().await;
+            info!("WebSocket 断开连接，准备清理资源");
+            stopped.write().await.clone_from(&true);
+            controller.write().await.close().await;
+            audio.write().await.close().await;
+            audio_cache.write().await.reset().await;
+            ws.write()
+                .await
+                .close()
+                .await
+                .inspect_err(|e| warn!("WebSocket 关闭失败: {}", e))
+                .ok();
+            info!("资源清理完成，已停止对话");
+        });
+        self.stopped.write().await.clone_from(&false);
         Ok(())
     }
 
     pub async fn stop(&self) -> Result<(), String> {
-        self.audio.write().await.close().await;
+        if *self.stopped.read().await {
+            warn!("对话已结束，无需再次停止");
+            return Ok(());
+        }
         self.controller.write().await.close().await;
-        // self.audio_cache.write().await.clear();
-        // FIXME: 这里需要清空缓存
-        
+        self.audio.write().await.close().await;
+        self.audio_cache.write().await.reset().await;
         self.ws.write().await.close().await?;
+        self.stopped.write().await.clone_from(&true);
         Ok(())
     }
 }

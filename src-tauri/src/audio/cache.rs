@@ -49,63 +49,57 @@ pub struct AudioCache {
 }
 
 impl AudioCache {
-    pub(super) async fn new() -> SharedAsyncRwLock<Self> {
+    pub(super) fn new() -> Self {
         debug!("AudioCache 初始化");
 
-        SharedAsyncRwLock::new(
-            Self {
-                inputRate: Config::get_instance().input_device.sample_rate,
-                outputRate: Config::get_instance().output_device.sample_rate,
-                rawInPCMData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
-                resampledInData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
-                opusInData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
+        // SharedAsyncRwLock::new(
+        Self {
+            inputRate: Config::get_instance().input_device.sample_rate,
+            outputRate: Config::get_instance().output_device.sample_rate,
+            rawInPCMData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
+            resampledInData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
+            opusInData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
 
-                rawOutPCMData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
-                decodedOutData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
-                opusOutData: SharedAsyncRwLock::new(
-                    Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N)
-                        .into(),
-                ),
+            rawOutPCMData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
+            decodedOutData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
+            opusOutData: SharedAsyncRwLock::new(
+                Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
+            ),
 
-                opsuEncoder: SharedAsyncMutex::new(
-                    opus::Encoder::new(
-                        Config::get_instance().opus.sample_rate as u32,
-                        opus::Channels::Mono,
-                        opus::Application::Audio,
-                    )
-                    .unwrap()
-                    .into(),
-                ),
-                opsuDecoder: SharedAsyncMutex::new(
-                    opus::Decoder::new(
-                        Config::get_instance().opus.sample_rate as u32,
-                        opus::Channels::Mono,
-                    )
-                    .unwrap()
-                    .into(),
-                ),
-                sendThread: None,
-                send_stopped: SharedAsyncRwLock::new(true.into()),
-                isSessionActive: false,
-                sessionInit: Once::new(),
-            }
-            .into(),
-        )
+            opsuEncoder: SharedAsyncMutex::new(
+                opus::Encoder::new(
+                    Config::get_instance().opus.sample_rate as u32,
+                    opus::Channels::Mono,
+                    opus::Application::Audio,
+                )
+                .unwrap()
+                .into(),
+            ),
+            opsuDecoder: SharedAsyncMutex::new(
+                opus::Decoder::new(
+                    Config::get_instance().opus.sample_rate as u32,
+                    opus::Channels::Mono,
+                )
+                .unwrap()
+                .into(),
+            ),
+            sendThread: None,
+            send_stopped: SharedAsyncRwLock::new(true.into()),
+            isSessionActive: false,
+            sessionInit: Once::new(),
+        }
+
+        // )
     }
 
     pub(super) async fn start(

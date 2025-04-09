@@ -21,6 +21,7 @@ pub struct WebsocketProtocol {
     session_id: SharedAsyncRwLock<Option<String>>,
     input_handle: Option<tauri::async_runtime::JoinHandle<()>>,
     output_handle: Option<tauri::async_runtime::JoinHandle<()>>,
+    timeout_received: Arc<Notify>,
 }
 
 impl WebsocketProtocol {
@@ -34,6 +35,7 @@ impl WebsocketProtocol {
             session_id: SharedAsyncRwLock::new(None.into()),
             input_handle: None,
             output_handle: None,
+            timeout_received: Arc::new(Notify::new()),
         }
     }
 
@@ -61,6 +63,7 @@ impl WebsocketProtocol {
                 let hello_received = self.hello_received.clone();
                 let connected = self.is_connected.clone();
                 let id = self.session_id.clone();
+                let timeout_received = self.timeout_received.clone();
 
                 let (frame_sender, frame_recv) =
                     mpsc::unbounded_channel::<crate::utils::frame::Frame>();
@@ -110,6 +113,7 @@ impl WebsocketProtocol {
                                     // controller.write().await.stop().await;
                                     // self.close()./;
                                     // TODO: 处理关闭连接的逻辑
+                                    timeout_received.notify_waiters();
                                 }
                                 _ => {
                                     debug!("Received message:\n{:#?}", msg);
@@ -202,6 +206,10 @@ impl WebsocketProtocol {
 }
 
 impl WebsocketProtocol {
+    pub fn get_notify(&self) -> Arc<Notify> {
+        self.hello_received.clone()
+    }
+
     pub async fn send_audio(&self, data: Vec<u8>) -> Result<(), String> {
         if let Some(sender) = &self.msg_sender {
             sender

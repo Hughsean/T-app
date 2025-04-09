@@ -1,2 +1,3 @@
-#[tokio::main]
-async fn main() {}
+fn main() {
+    app_lib::state::AppState::new();
+}

@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use crate::{audio::func, types::SharedAsyncRwLock};
 use std::ops::Not;
-use tracing::{debug, error, info};
+use tracing::{debug, error, warn};
 
 pub struct Audio {
     pub is_audio_stoped: SharedAsyncRwLock<bool>,
@@ -31,6 +31,7 @@ impl Audio {
         audio_cache: SharedAsyncRwLock<crate::audio::cache::AudioCache>,
     ) {
         if audio.read().await.is_audio_stoped().await.not() {
+            debug!("音频已启动，拒绝再次启动");
             return;
         }
         audio.write().await.set_audio_stoped(false).await;
@@ -65,7 +66,7 @@ impl Audio {
     pub(super) async fn close(&mut self) {
         debug!("音频停止中...");
         if *self.is_audio_stoped.read().await {
-            info!("音频已停止，无需再次停止");
+            warn!("音频已停止，无需再次停止");
             return;
         }
         self.is_audio_stoped.write().await.clone_from(&true);

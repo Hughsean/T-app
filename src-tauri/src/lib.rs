@@ -1,10 +1,9 @@
-use std::ops::Not;
-
 use anyhow::anyhow;
 use commands::{
     audio::{audio_start, audio_stop},
     greet, open_settings_window,
 };
+use std::ops::Not;
 use tauri::Manager;
 use tracing::error;
 pub mod audio;

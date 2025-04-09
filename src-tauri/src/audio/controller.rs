@@ -12,14 +12,11 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub(super) async fn new() -> SharedAsyncRwLock<Self> {
-        SharedAsyncRwLock::new(
-            Self {
-                worker_thread: None,
-                is_stopped: SharedAsyncRwLock::new(true.into()),
-            }
-            .into(),
-        )
+    pub(super) fn new() -> Self {
+        Self {
+            worker_thread: None,
+            is_stopped: SharedAsyncRwLock::new(true.into()),
+        }
     }
 
     pub(super) async fn start(

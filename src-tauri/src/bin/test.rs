@@ -9,8 +9,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let state =
             app_lib::audio::AudioState::new(app_lib::audio::AudioState_::new().await.into());
 
-        state.read().await.start().await?;
-        
+        state.write().await.start().await?;
+
         let mut input = String::new();
         match stdin().read_line(&mut input) {
             Ok(n) => {

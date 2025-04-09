@@ -1,6 +1,7 @@
 use crate::audio::cache::AudioCache;
 use crate::types::SharedAsyncRwLock;
 use futures_util::{SinkExt, StreamExt};
+use serde_json::json;
 use std::ops::Not;
 use std::sync::Arc;
 use tokio::net::TcpStream;
@@ -11,27 +12,12 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::warn;
 use tracing::{debug, error, info};
 
-const HELLO_JSON: &str = r#"
-{
-    "type":"hello",
-    "version":1,
-    "transport":"websocket",
-    "audio_params":
-    {
-        "format":"opus",
-        "sample_rate":16000,
-        "channels":1,
-        "frame_duration":60
-    }
-}
-"#;
-
 pub struct WebsocketProtocol {
     websocket_url: String,
     is_connected: SharedAsyncRwLock<bool>,
     hello_received: Arc<Notify>,
     msg_sender: Option<mpsc::UnboundedSender<Message>>,
-    frame_recver: Option<mpsc::UnboundedReceiver<crate::utils::frame::Frame>>,
+    frame_recver: SharedAsyncRwLock<Option<mpsc::UnboundedReceiver<crate::utils::frame::Frame>>>,
     session_id: SharedAsyncRwLock<Option<String>>,
     input_handle: Option<tauri::async_runtime::JoinHandle<()>>,
     output_handle: Option<tauri::async_runtime::JoinHandle<()>>,
@@ -44,7 +30,7 @@ impl WebsocketProtocol {
             is_connected: SharedAsyncRwLock::new(false.into()),
             hello_received: Arc::new(Notify::new()),
             msg_sender: None,
-            frame_recver: None,
+            frame_recver: SharedAsyncRwLock::new(None.into()),
             session_id: SharedAsyncRwLock::new(None.into()),
             input_handle: None,
             output_handle: None,
@@ -79,7 +65,7 @@ impl WebsocketProtocol {
                 let (frame_sender, frame_recv) =
                     mpsc::unbounded_channel::<crate::utils::frame::Frame>();
 
-                self.frame_recver.replace(frame_recv);
+                self.frame_recver.write().await.replace(frame_recv);
 
                 self.input_handle
                     .replace(tauri::async_runtime::spawn(async move {
@@ -148,8 +134,22 @@ impl WebsocketProtocol {
                     }));
                 debug!("ws 输出处理线程启动成功");
 
-                self.send_text(HELLO_JSON.into()).await?;
-                debug!("发送hello消息: {}", HELLO_JSON);
+                let hello_msg = json!(
+                    {
+                        "type":"hello",
+                        "version":1,
+                        "transport":"websocket",
+                        "audio_params":
+                        {
+                            "format":"opus",
+                            "sample_rate":16000,
+                            "channels":1,
+                            "frame_duration":60
+                        }
+                    }
+                );
+                self.send_text(hello_msg.to_string()).await?;
+                debug!("发送hello消息: {}", &hello_msg);
 
                 tokio::time::timeout(
                     std::time::Duration::from_secs(5),
@@ -183,7 +183,7 @@ impl WebsocketProtocol {
                 .map_err(|_| "关闭WebSocket连接失败".to_string())?;
             drop(sender);
         }
-        if let Some(mut recver) = self.frame_recver.take() {
+        if let Some(mut recver) = self.frame_recver.write().await.take() {
             recver.close();
             drop(recver);
         }
@@ -203,10 +203,6 @@ impl WebsocketProtocol {
 
 impl WebsocketProtocol {
     pub async fn send_audio(&self, data: Vec<u8>) -> Result<(), String> {
-        if self.is_connected().await.not() {
-            return Err("WebSocket未连接".to_string());
-        }
-
         if let Some(sender) = &self.msg_sender {
             sender
                 .send(Message::Binary(data.into()))
@@ -217,10 +213,6 @@ impl WebsocketProtocol {
     }
 
     pub async fn send_text(&self, message: String) -> Result<(), String> {
-        if self.is_connected().await.not() {
-            return Err("WebSocket未连接".to_string());
-        }
-
         if let Some(sender) = &self.msg_sender {
             sender
                 .send(Message::Text(message.into()))
@@ -230,11 +222,14 @@ impl WebsocketProtocol {
         }
     }
 
-    pub async fn read_text_frame(&mut self) -> Option<crate::utils::frame::Frame> {
-        if let Some(recver) = self.frame_recver.as_mut() {
-            match recver.recv().await {
-                Some(frame) => Some(frame),
-                None => None,
+    pub async fn read_text_frame(&self) -> Option<crate::utils::frame::Frame> {
+        if let Some(recver) = self.frame_recver.write().await.as_mut() {
+            match recver.try_recv() {
+                Ok(frame) => Some(frame),
+                Err(_e) => {
+                    // debug!("读取控制帧失败: {:?}", e);
+                    None
+                }
             }
         } else {
             None
@@ -249,6 +244,7 @@ impl WebsocketProtocol {
         *self.is_connected.read().await
     }
 
+    #[deprecated]
     pub fn audio_handler(
         mut read: futures_util::stream::SplitStream<
             tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,

@@ -32,7 +32,7 @@ impl From<Value> for Frame {
                 .map(|e| Frame::TtsFrame(e))
                 .unwrap_or(Frame::Error),
             _ => {
-                debug!("未知帧类型:\n {:#}", json);
+                debug!("未知帧类型:\n{:#}", json);
                 Frame::Error
             }
         }

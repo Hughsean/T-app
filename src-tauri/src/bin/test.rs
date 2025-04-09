@@ -8,12 +8,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = tauri::async_runtime::block_on(async {
         let state =
             app_lib::audio::AudioState::new(app_lib::audio::AudioState_::new().await.into());
-        // debug!("AudioState: {:?}", state);
-        error!("======================");
-        state.write().await.ws_connect().await?;
-        error!("======================");
+
         state.read().await.start().await?;
-        error!("======================");
+        
         let mut input = String::new();
         match stdin().read_line(&mut input) {
             Ok(n) => {

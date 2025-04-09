@@ -12,7 +12,7 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub async fn new() -> SharedAsyncRwLock<Self> {
+    pub(super) async fn new() -> SharedAsyncRwLock<Self> {
         SharedAsyncRwLock::new(
             Self {
                 worker_thread: None,
@@ -22,7 +22,7 @@ impl Controller {
         )
     }
 
-    pub async fn start(
+    pub(super) async fn start(
         controller: SharedAsyncRwLock<Self>,
         audio_cache: SharedAsyncRwLock<AudioCache>,
         ws: SharedAsyncRwLock<crate::utils::ws::WebsocketProtocol>,
@@ -51,7 +51,7 @@ impl Controller {
                     if *is_stopped.read().await {
                         break;
                     }
-                    if let Some(frame) = ws.write().await.read_text_frame().await {
+                    if let Some(frame) = ws.read().await.read_text_frame().await {
                         match frame {
                             Frame::TtsFrame(frame) => {
                                 match frame.state {
@@ -77,7 +77,7 @@ impl Controller {
             }));
     }
 
-    pub async fn close(&mut self) {
+    pub(crate) async fn close(&mut self) {
         if *self.is_stopped.read().await {
             warn!("已拒绝重复停止控制器工作线程");
             return;

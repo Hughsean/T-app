@@ -5,12 +5,12 @@ use tracing::{debug, error, info};
 
 pub struct Audio {
     pub is_audio_stoped: SharedAsyncRwLock<bool>,
-    audioInThread: Option<std::thread::JoinHandle<()>>,
-    audioOutThread: Option<std::thread::JoinHandle<()>>,
+    pub(super) audioInThread: Option<std::thread::JoinHandle<()>>,
+    pub(super) audioOutThread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Audio {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Audio {
             is_audio_stoped: SharedAsyncRwLock::new(true.into()),
             audioInThread: None,
@@ -18,13 +18,24 @@ impl Audio {
         }
     }
 
-    pub async fn start(&mut self, audio_cache: SharedAsyncRwLock<crate::audio::cache::AudioCache>) {
-        if self.is_audio_stoped.read().await.not() {
+    pub(super) async fn is_audio_stoped(&self) -> bool {
+        *self.is_audio_stoped.read().await
+    }
+
+    pub(super) async fn set_audio_stoped(&mut self, stoped: bool) {
+        self.is_audio_stoped.write().await.clone_from(&stoped);
+    }
+
+    pub(super) async fn start(
+        audio: SharedAsyncRwLock<Self>,
+        audio_cache: SharedAsyncRwLock<crate::audio::cache::AudioCache>,
+    ) {
+        if audio.read().await.is_audio_stoped().await.not() {
             return;
         }
-        *self.is_audio_stoped.write().await = false;
+        audio.write().await.set_audio_stoped(false).await;
 
-        let audioStoped_ = self.is_audio_stoped.clone();
+        let audioStoped_ = audio.read().await.is_audio_stoped.clone();
 
         let audio_cache_ = audio_cache.clone();
 
@@ -37,7 +48,7 @@ impl Audio {
             .inspect_err(|e| error!("音频输入线程启动失败: {}", e))
             .unwrap();
 
-        let audioStoped_ = self.is_audio_stoped.clone();
+        let audioStoped_ = audio.read().await.is_audio_stoped.clone();
         let out_thread = std::thread::Builder::new()
             .name("音频输出线程".into())
             .spawn(move || {
@@ -47,11 +58,11 @@ impl Audio {
             .inspect_err(|e| error!("音频输出线程启动失败: {}", e))
             .unwrap();
 
-        self.audioInThread = Some(in_thread);
-        self.audioOutThread = Some(out_thread);
+        audio.write().await.audioInThread.replace(in_thread);
+        audio.write().await.audioOutThread.replace(out_thread);
     }
 
-    pub async fn close(&mut self) {
+    pub(super) async fn close(&mut self) {
         debug!("音频停止中...");
         if *self.is_audio_stoped.read().await {
             info!("音频已停止，无需再次停止");

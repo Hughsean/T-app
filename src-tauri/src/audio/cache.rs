@@ -41,7 +41,7 @@ pub struct AudioCache {
     /// 发送音频数据的线程
     sendThread: Option<tauri::async_runtime::JoinHandle<()>>,
     /// 发送音频数据的线程停止标志
-    stop: SharedAsyncRwLock<bool>,
+    send_stopped: SharedAsyncRwLock<bool>,
 
     isSessionActive: bool,
     // 会话开始时，进行数据接收缓存
@@ -49,7 +49,7 @@ pub struct AudioCache {
 }
 
 impl AudioCache {
-    pub async fn new() -> SharedAsyncRwLock<Self> {
+    pub(super) async fn new() -> SharedAsyncRwLock<Self> {
         debug!("AudioCache 初始化");
 
         SharedAsyncRwLock::new(
@@ -100,7 +100,7 @@ impl AudioCache {
                     .into(),
                 ),
                 sendThread: None,
-                stop: SharedAsyncRwLock::new(true.into()),
+                send_stopped: SharedAsyncRwLock::new(true.into()),
                 isSessionActive: false,
                 sessionInit: Once::new(),
             }
@@ -108,12 +108,24 @@ impl AudioCache {
         )
     }
 
-    pub async fn start(
+    pub(super) async fn start(
         audio_cache: SharedAsyncRwLock<Self>,
         ws: SharedAsyncRwLock<WebsocketProtocol>,
     ) {
+        if audio_cache.read().await.send_stopped.read().await.not() {
+            debug!("AudioCache 数据发送线程已启动，拒绝重复启动");
+            return;
+        }
+        audio_cache
+            .read()
+            .await
+            .send_stopped
+            .write()
+            .await
+            .clone_from(&false);
+
         let shared_audio_cache = audio_cache.clone();
-        let stop_flag = audio_cache.read().await.stop.clone();
+        let stop_flag = audio_cache.read().await.send_stopped.clone();
 
         audio_cache
             .write()
@@ -130,8 +142,8 @@ impl AudioCache {
             }));
     }
 
-    pub async fn reset(&mut self) {
-        self.stop.write().await.clone_from(&true);
+    pub(super) async fn reset(&mut self) {
+        self.send_stopped.write().await.clone_from(&true);
         if let Some(st) = self.sendThread.take() {
             st.await
                 .inspect_err(|e| error!("AudioCache 数据发送线程退出失败: {}", e))
@@ -152,7 +164,7 @@ impl Drop for AudioCache {
 
 // input
 impl AudioCache {
-    pub fn write_input_data(&self, data: Vec<f32>) {
+    pub(super) fn write_input_data(&self, data: Vec<f32>) {
         self.rawInPCMData.blocking_write().append(&mut data.clone());
     }
 
@@ -229,10 +241,10 @@ impl AudioCache {
     async fn send_audio(&self, ws: SharedAsyncRwLock<WebsocketProtocol>) {
         let len = self.opusInData.read().await.len();
         if len > 0 {
+            // debug!("发送音频数据: {}", len);
             let mut opusdata = self.opusInData.write().await;
             for e in opusdata.iter() {
                 let rst = ws.read().await.send_audio(e.clone()).await;
-
                 if let Err(e) = rst {
                     info!("发送数据帧失败: {}", e);
                 }
@@ -315,7 +327,7 @@ impl AudioCache {
         // 新一轮会话，进行数据接收缓存
         self.sessionInit.call_once(|| {
             // 会话开始先等待一段时间，使数据缓存填充一些数据，防止音频卡顿
-            std::thread::sleep(Duration::from_millis(300));
+            std::thread::sleep(Duration::from_millis(900));
             debug!("会话开始，进行数据接收缓存");
         });
 
@@ -342,7 +354,7 @@ impl AudioCache {
     // 会话控制只对输出音频有效
     // 目前输入音频数据不需要控制
 
-    pub async fn session_stop(&mut self) {
+    pub(super) async fn session_stop(&mut self) {
         if self.isSessionActive.not() {
             return;
         }
@@ -354,7 +366,7 @@ impl AudioCache {
 
         debug!("会话重置，清空输出缓存数据");
     }
-    pub fn session_start(&mut self) {
+    pub(super) fn session_start(&mut self) {
         self.sessionInit = Once::new();
         self.isSessionActive = true;
         debug!("会话开始");

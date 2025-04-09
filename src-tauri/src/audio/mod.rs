@@ -19,10 +19,10 @@ use tracing::debug;
 pub type AudioState = SharedAsyncRwLock<AudioState_>;
 
 pub struct AudioState_ {
-    pub audio: SharedAsyncRwLock<Audio>,
-    pub audio_cache: SharedAsyncRwLock<AudioCache>,
-    pub controller: SharedAsyncRwLock<Controller>,
-    pub ws: SharedAsyncRwLock<WebsocketProtocol>,
+    audio: SharedAsyncRwLock<Audio>,
+    audio_cache: SharedAsyncRwLock<AudioCache>,
+    controller: SharedAsyncRwLock<Controller>,
+    ws: SharedAsyncRwLock<WebsocketProtocol>,
 }
 
 impl AudioState_ {
@@ -36,6 +36,7 @@ impl AudioState_ {
             ),
         }
     }
+    
     pub async fn ws_connect(&self) -> Result<String, String> {
         self.ws
             .write()
@@ -48,14 +49,21 @@ impl AudioState_ {
     pub async fn start(&self) -> Result<(), String> {
         if self.ws.read().await.is_connected().await.not() {
             // XXX id 留存，如果需要使用
+            debug!("WebSocket 连接中...");
             let _id = self
                 .ws_connect()
                 .await
                 .inspect_err(|e| debug!("WebSocket 连接失败: {}", e))?;
         }
+        AudioCache::start(self.audio_cache.clone(), self.ws.clone()).await;
+        Audio::start(self.audio.clone(), self.audio_cache.clone()).await;
+        Controller::start(
+            self.controller.clone(),
+            self.audio_cache.clone(),
+            self.ws.clone(),
+        )
+        .await;
 
-        let mut audio = self.audio.write().await;
-        audio.start(self.audio_cache.clone()).await;
         Ok(())
     }
 
@@ -64,6 +72,7 @@ impl AudioState_ {
         self.controller.write().await.close().await;
         // self.audio_cache.write().await.clear();
         // FIXME: 这里需要清空缓存
+        
         self.ws.write().await.close().await?;
         Ok(())
     }

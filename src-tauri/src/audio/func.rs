@@ -14,7 +14,10 @@ fn input_callback(
     }
 }
 
-pub async fn input(stopflag: SharedAsyncRwLock<bool>, audio_cacahe: SharedAsyncRwLock<AudioCache>) {
+pub(super) async fn input(
+    stopflag: SharedAsyncRwLock<bool>,
+    audio_cacahe: SharedAsyncRwLock<AudioCache>,
+) {
     let stream = SharedAsyncMutex::new(
         get_device(crate::utils::device::DeviceType::Input)
             .inspect_err(|e| error!("获取输入设备失败: {}", e))
@@ -70,7 +73,7 @@ fn output_callback(
     }
 }
 
-pub async fn output(
+pub(super) async fn output(
     stopflag: SharedAsyncRwLock<bool>,
     audio_cacahe: SharedAsyncRwLock<AudioCache>,
 ) {

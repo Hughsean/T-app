@@ -1,7 +1,6 @@
 use super::device::{DeviceConfig, DeviceType, get_device_config};
-use lazy_static::lazy_static;
 use serde::Deserialize;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::OnceLock};
 use tracing::level_filters::LevelFilter;
 
 const DEFAULT_CONFIG: &str = r#"
@@ -21,9 +20,7 @@ file_path = "../.log"
 mode = "overwrite"
 "#;
 
-lazy_static! {
-    static ref CONFIG: Arc<Config> = Arc::new(Config::new());
-}
+static CONFIG: OnceLock<Config> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpusCfg {
@@ -141,7 +138,15 @@ impl Config {
         return config;
     }
 
-    pub fn get_instance() -> Arc<Config> {
-        CONFIG.clone()
+    pub fn get_instance() -> &'static Config {
+        CONFIG.get_or_init(|| Config::new())
     }
+}
+
+#[test]
+fn f() {
+    Config::get_instance();
+    Config::get_instance();
+    Config::get_instance();
+    Config::get_instance();
 }

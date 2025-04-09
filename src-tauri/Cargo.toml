@@ -6,12 +6,8 @@ authors = ["Hughsean Feng"]
 edition = "2024"
 
 default-run = "T-App"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -28,7 +24,6 @@ enable_window_event_log = []
 anyhow = "1.0.97"
 cpal = "0.15.3"
 futures-util = "0.3.31"
-lazy_static = "1.5.0"
 opus = "0.3.0"
 rubato = "0.16.2"
 serde = { version = "1.0.219", features = ["derive"] }

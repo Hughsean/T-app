@@ -9,7 +9,7 @@ use tracing::error;
 pub mod audio;
 pub mod commands;
 pub mod state;
-mod types;
+pub mod types;
 pub mod utils;
 #[cfg(feature = "enable_window_event_log")]
 use tracing::debug;

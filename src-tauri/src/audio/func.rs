@@ -4,13 +4,18 @@ use crate::{
     utils::{config::Config, device::get_device},
 };
 use cpal::traits::{DeviceTrait, StreamTrait};
-use tracing::error;
+use tracing::{debug, error};
 
 fn input_callback(
     audio_cacahe: SharedAsyncRwLock<AudioCache>,
 ) -> impl FnMut(&[f32], &cpal::InputCallbackInfo) {
     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-        audio_cacahe.blocking_read().write_input_data(data.to_vec());
+        tauri::async_runtime::block_on(async {
+            audio_cacahe
+                .blocking_read()
+                .write_input_data(data.to_vec())
+                .await;
+        });
     }
 }
 
@@ -54,22 +59,25 @@ fn output_callback(
     audio_cacahe: SharedAsyncRwLock<AudioCache>,
 ) -> impl FnMut(&mut [i16], &cpal::OutputCallbackInfo) {
     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-        let mut n = 0;
-        loop {
-            if *stopflag.blocking_read() {
-                break;
-            }
-            if let Some(recv_data) = audio_cacahe.blocking_read().read(data.len()) {
-                data.copy_from_slice(&recv_data);
-                break;
-            }
+        tauri::async_runtime::block_on(async {
+            let mut n = 0;
+            loop {
+                if *stopflag.read().await {
+                    break;
+                }
 
-            if n > 12 {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            } else {
-                n += 1;
-            };
-        }
+                if let Some(recv_data) = audio_cacahe.read().await.read(data.len()).await {
+                    data.copy_from_slice(&recv_data);
+                    break;
+                }
+
+                if n > 12 {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                } else {
+                    n += 1;
+                };
+            }
+        })
     }
 }
 

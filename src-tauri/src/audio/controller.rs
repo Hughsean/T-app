@@ -44,7 +44,7 @@ impl Controller {
             .worker_thread
             .replace(tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(70)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(80)).await;
                     if *is_stopped.read().await {
                         break;
                     }

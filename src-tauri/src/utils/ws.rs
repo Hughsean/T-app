@@ -1,10 +1,8 @@
-use crate::audio::cache::AudioCache;
 use crate::types::SharedAsyncRwLock;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use std::ops::Not;
 use std::sync::Arc;
-use tokio::net::TcpStream;
 use tokio::sync::Notify;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
@@ -15,13 +13,18 @@ use tracing::{debug, error, info};
 pub struct WebsocketProtocol {
     websocket_url: String,
     is_connected: SharedAsyncRwLock<bool>,
-    hello_received: Arc<Notify>,
-    msg_sender: Option<mpsc::UnboundedSender<Message>>,
-    frame_recver: SharedAsyncRwLock<Option<mpsc::UnboundedReceiver<crate::utils::frame::Frame>>>,
     session_id: SharedAsyncRwLock<Option<String>>,
+
+    hello_received: Arc<Notify>,
+    timeout_received: Arc<Notify>,
+
     input_handle: Option<tauri::async_runtime::JoinHandle<()>>,
     output_handle: Option<tauri::async_runtime::JoinHandle<()>>,
-    timeout_received: Arc<Notify>,
+
+    // 消息通道
+    msg_sender: Option<mpsc::UnboundedSender<Message>>,
+    frame_recver: SharedAsyncRwLock<Option<mpsc::UnboundedReceiver<crate::utils::frame::Frame>>>,
+    audio_recver: SharedAsyncRwLock<Option<mpsc::UnboundedReceiver<Vec<u8>>>>,
 }
 
 impl WebsocketProtocol {
@@ -29,19 +32,23 @@ impl WebsocketProtocol {
         Self {
             websocket_url,
             is_connected: SharedAsyncRwLock::new(false.into()),
-            hello_received: Arc::new(Notify::new()),
-            msg_sender: None,
-            frame_recver: SharedAsyncRwLock::new(None.into()),
             session_id: SharedAsyncRwLock::new(None.into()),
+
+            hello_received: Arc::new(Notify::new()),
+            timeout_received: Arc::new(Notify::new()),
+
             input_handle: None,
             output_handle: None,
-            timeout_received: Arc::new(Notify::new()),
+
+            msg_sender: None,
+            frame_recver: SharedAsyncRwLock::new(None.into()),
+            audio_recver: SharedAsyncRwLock::new(None.into()),
         }
     }
 
     pub async fn connect(
         &mut self,
-        audio_cache: SharedAsyncRwLock<AudioCache>,
+        // audio_cache: SharedAsyncRwLock<AudioCache>,
     ) -> Result<String, String> {
         if self.is_connected().await {
             warn!("WebSocket 已连接，拒绝重复连接");
@@ -59,16 +66,18 @@ impl WebsocketProtocol {
             Ok((ws_stream, _response)) => {
                 info!("WebSocket 已连接: {}", url);
                 let (mut write, mut read) = ws_stream.split();
-                // Spawn a task to handle incoming messages
-                let hello_received = self.hello_received.clone();
+
                 let connected = self.is_connected.clone();
                 let id = self.session_id.clone();
+                let hello_received = self.hello_received.clone();
                 let timeout_received = self.timeout_received.clone();
 
                 let (frame_sender, frame_recv) =
                     mpsc::unbounded_channel::<crate::utils::frame::Frame>();
+                let (audio_sender, audio_recv) = mpsc::unbounded_channel::<Vec<u8>>();
 
                 self.frame_recver.write().await.replace(frame_recv);
+                self.audio_recver.write().await.replace(audio_recv);
 
                 self.input_handle
                     .replace(tauri::async_runtime::spawn(async move {
@@ -101,11 +110,14 @@ impl WebsocketProtocol {
                                     }
                                 }
                                 Message::Binary(bytes) => {
-                                    audio_cache
-                                        .read()
-                                        .await
-                                        .write_output_data(bytes.to_vec())
-                                        .await;
+                                    audio_sender.send(bytes.to_vec()).unwrap_or_else(|e| {
+                                        error!("发送音频数据失败: {}", e);
+                                    });
+                                    // audio_cache
+                                    //     .read()
+                                    //     .await
+                                    //     .write_output_data(bytes.to_vec())
+                                    //     .await;
                                 }
                                 Message::Close(frame) => {
                                     debug!("WebSocket 连接关闭: {:?}", frame);
@@ -191,6 +203,10 @@ impl WebsocketProtocol {
             recver.close();
             drop(recver);
         }
+        if let Some(mut recver) = self.audio_recver.write().await.take() {
+            recver.close();
+            drop(recver);
+        }
 
         if let Some(t) = self.input_handle.take() {
             t.await
@@ -207,7 +223,7 @@ impl WebsocketProtocol {
 
 impl WebsocketProtocol {
     pub fn get_notify(&self) -> Arc<Notify> {
-        self.hello_received.clone()
+        self.timeout_received.clone()
     }
 
     pub async fn send_audio(&self, data: Vec<u8>) -> Result<(), String> {
@@ -244,6 +260,20 @@ impl WebsocketProtocol {
         }
     }
 
+    pub async fn read_audio_data(&self) -> Option<Vec<u8>> {
+        if let Some(recver) = self.audio_recver.write().await.as_mut() {
+            match recver.try_recv() {
+                Ok(data) => Some(data),
+                Err(_e) => {
+                    // debug!("读取音频数据失败: {:?}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
     pub async fn get_session_id(&self) -> Option<String> {
         self.session_id.read().await.clone()
     }
@@ -252,54 +282,54 @@ impl WebsocketProtocol {
         *self.is_connected.read().await
     }
 
-    #[deprecated]
-    pub fn audio_handler(
-        mut read: futures_util::stream::SplitStream<
-            tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
-        >,
-        connected: SharedAsyncRwLock<bool>,
-        hello_received: Arc<Notify>,
-        id: SharedAsyncRwLock<String>,
-        audio_cache: SharedAsyncRwLock<AudioCache>,
-    ) -> impl Future + Send + 'static {
-        async move {
-            while let Some(Ok(msg)) = read.next().await {
-                match msg {
-                    Message::Text(text) => {
-                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if data["type"] == "hello" && connected.read().await.not() {
-                                hello_received.notify_one();
-                                *connected.write().await = true;
-                                *id.write().await =
-                                    data["session_id"].as_str().unwrap_or("").to_string();
-                                debug!("session_id = {}", id.read().await);
-                            }
+    // #[deprecated]
+    // pub fn audio_handler(
+    //     mut read: futures_util::stream::SplitStream<
+    //         tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+    //     >,
+    //     connected: SharedAsyncRwLock<bool>,
+    //     hello_received: Arc<Notify>,
+    //     id: SharedAsyncRwLock<String>,
+    //     audio_cache: SharedAsyncRwLock<AudioCache>,
+    // ) -> impl Future + Send + 'static {
+    //     async move {
+    //         while let Some(Ok(msg)) = read.next().await {
+    //             match msg {
+    //                 Message::Text(text) => {
+    //                     if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+    //                         if data["type"] == "hello" && connected.read().await.not() {
+    //                             hello_received.notify_one();
+    //                             *connected.write().await = true;
+    //                             *id.write().await =
+    //                                 data["session_id"].as_str().unwrap_or("").to_string();
+    //                             debug!("session_id = {}", id.read().await);
+    //                         }
 
-                            let frame = crate::utils::frame::Frame::from(data.clone());
+    //                         let frame = crate::utils::frame::Frame::from(data.clone());
 
-                            debug!("控制帧:\n{:#?}", frame);
-                        }
-                    }
-                    Message::Binary(bytes) => {
-                        audio_cache
-                            .read()
-                            .await
-                            .write_output_data(bytes.to_vec())
-                            .await;
-                    }
-                    Message::Close(frame) => {
-                        debug!("WebSocket 连接关闭: {:?}", frame);
-                        // *connected.write().await = false;
-                        // controller.write().await.stop().await;
-                        // TODO: 处理关闭连接的逻辑
-                    }
-                    _ => {
-                        debug!("Received message:\n{:#?}", msg);
-                    }
-                }
-            }
-        }
-    }
+    //                         debug!("控制帧:\n{:#?}", frame);
+    //                     }
+    //                 }
+    //                 Message::Binary(bytes) => {
+    //                     audio_cache
+    //                         .read()
+    //                         .await
+    //                         .write_output_data(bytes.to_vec())
+    //                         .await;
+    //                 }
+    //                 Message::Close(frame) => {
+    //                     debug!("WebSocket 连接关闭: {:?}", frame);
+    //                     // *connected.write().await = false;
+    //                     // controller.write().await.stop().await;
+    //                     // TODO: 处理关闭连接的逻辑
+    //                 }
+    //                 _ => {
+    //                     debug!("Received message:\n{:#?}", msg);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 impl Drop for WebsocketProtocol {

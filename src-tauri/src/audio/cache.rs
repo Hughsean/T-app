@@ -35,11 +35,11 @@ pub struct AudioCache {
     decodedOutData: SharedAsyncRwLock<Vec<i16>>,
     /// 服务器接收的Opus编码音频数据
     opusOutData: SharedAsyncRwLock<Vec<Vec<u8>>>,
-
     opsuEncoder: SharedAsyncMutex<opus::Encoder>,
     opsuDecoder: SharedAsyncMutex<opus::Decoder>,
     /// 发送音频数据的线程
     sendThread: Option<tauri::async_runtime::JoinHandle<()>>,
+    recvThread: Option<tauri::async_runtime::JoinHandle<()>>,
     /// 发送音频数据的线程停止标志
     send_stopped: SharedAsyncRwLock<bool>,
 
@@ -75,7 +75,6 @@ impl AudioCache {
             opusOutData: SharedAsyncRwLock::new(
                 Vec::with_capacity(Config::get_instance().websocket.frame_size * BUFFER_N).into(),
             ),
-
             opsuEncoder: SharedAsyncMutex::new(
                 opus::Encoder::new(
                     Config::get_instance().opus.sample_rate as u32,
@@ -94,6 +93,7 @@ impl AudioCache {
                 .into(),
             ),
             sendThread: None,
+            recvThread: None,
             send_stopped: SharedAsyncRwLock::new(true.into()),
             isSessionActive: false,
             sessionInit: Once::new(),
@@ -120,6 +120,7 @@ impl AudioCache {
 
         let shared_audio_cache = audio_cache.clone();
         let stop_flag = audio_cache.read().await.send_stopped.clone();
+        let ws_ = ws.clone();
 
         audio_cache
             .write()
@@ -128,11 +129,34 @@ impl AudioCache {
             .replace(tauri::async_runtime::spawn(async move {
                 debug!("AudioCache 数据发送线程初始化");
                 while !*stop_flag.read().await {
-                    let ws_ = ws.clone();
-                    shared_audio_cache.read().await.send_audio(ws_).await;
-                    std::thread::sleep(std::time::Duration::from_millis(60));
+                    let ws__ = ws_.clone();
+                    shared_audio_cache.read().await.send_audio(ws__).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(60)).await;
                 }
                 debug!("AudioCache 数据发送线程退出");
+            }));
+
+        let shared_audio_cache = audio_cache.clone();
+        let stop_flag = audio_cache.read().await.send_stopped.clone();
+        audio_cache
+            .write()
+            .await
+            .recvThread
+            .replace(tauri::async_runtime::spawn(async move {
+                debug!("AudioCache 数据接收线程初始化");
+                while !*stop_flag.read().await {
+                    let ws_ = ws.clone();
+                    if let Some(data) = ws_.read().await.read_audio_data().await {
+                        shared_audio_cache
+                            .read()
+                            .await
+                            .write_output_data(data)
+                            .await;
+                    } else {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+                    }
+                }
+                debug!("AudioCache 数据接收线程退出");
             }));
     }
 
@@ -143,6 +167,13 @@ impl AudioCache {
                 .inspect_err(|e| error!("AudioCache 数据发送线程退出失败: {}", e))
                 .unwrap();
         }
+
+        if let Some(st) = self.recvThread.take() {
+            st.await
+                .inspect_err(|e| error!("AudioCache 数据接收线程退出失败: {}", e))
+                .unwrap();
+        }
+
         self.clear().await;
     }
 }
@@ -158,8 +189,8 @@ impl Drop for AudioCache {
 
 // input
 impl AudioCache {
-    pub(super) fn write_input_data(&self, data: Vec<f32>) {
-        self.rawInPCMData.blocking_write().append(&mut data.clone());
+    pub(super) async fn write_input_data(&self, data: Vec<f32>) {
+        self.rawInPCMData.write().await.append(&mut data.clone());
     }
 
     async fn resample_in(&self) {
@@ -253,13 +284,37 @@ impl AudioCache {
 
 // output
 impl AudioCache {
-    pub async fn write_output_data(&self, data: Vec<u8>) {
+    async fn write_output_data(&self, data: Vec<u8>) {
         self.opusOutData.write().await.push(data);
     }
 
-    async fn resample_out(&self, size: usize) {
+    pub async fn read(&self, size: usize) -> Option<Vec<i16>> {
+        // 新一轮会话，进行数据接收缓存
+        self.sessionInit.call_once(|| {
+            // 会话开始先等待一段时间，使数据缓存填充一些数据，防止音频卡顿
+            std::thread::sleep(Duration::from_millis(900));
+            debug!("会话开始，进行数据接收缓存");
+        });
+
+        if self.isSessionActive.not() {
+            return None;
+        }
+
+        let len = self.rawOutPCMData.read().await.len();
+        if len > size {
+            let mut output = self.rawOutPCMData.write().await;
+            let remain = output.split_off(size);
+            let ret = output[0..size].to_vec();
+            *output = remain;
+            Some(ret)
+        } else {
+            self.resample_out().await;
+            None
+        }
+    }
+    async fn resample_out(&self) {
         let len = self.decodedOutData.read().await.len();
-        if len > Config::get_instance().websocket.frame_size * size {
+        if len > Config::get_instance().websocket.frame_size {
             let mut decoded = self.decodedOutData.write().await;
 
             let mut resampler = FftFixedIn::<f32>::new(
@@ -316,31 +371,6 @@ impl AudioCache {
             );
         }
     }
-
-    pub fn read(&self, size: usize) -> Option<Vec<i16>> {
-        // 新一轮会话，进行数据接收缓存
-        self.sessionInit.call_once(|| {
-            // 会话开始先等待一段时间，使数据缓存填充一些数据，防止音频卡顿
-            std::thread::sleep(Duration::from_millis(900));
-            debug!("会话开始，进行数据接收缓存");
-        });
-
-        if self.isSessionActive.not() {
-            return None;
-        }
-
-        let len = self.rawOutPCMData.blocking_read().len();
-        if len > size {
-            let mut output = self.rawOutPCMData.blocking_write();
-            let remain = output.split_off(size);
-            let ret = output[0..size].to_vec();
-            *output = remain;
-            Some(ret)
-        } else {
-            tauri::async_runtime::block_on(self.resample_out(3));
-            None
-        }
-    }
 }
 
 impl AudioCache {
@@ -356,7 +386,7 @@ impl AudioCache {
         // 重置会话状态
         self.rawOutPCMData.write().await.clear();
         self.decodedOutData.write().await.clear();
-        self.opusOutData.write().await.clear();
+        // self.opusOutData.write().await.clear();
 
         debug!("会话重置，清空输出缓存数据");
     }
@@ -372,6 +402,6 @@ impl AudioCache {
         self.opusInData.write().await.clear();
         self.rawOutPCMData.write().await.clear();
         self.decodedOutData.write().await.clear();
-        self.opusOutData.write().await.clear();
+        // self.opusOutData.write().await.clear();
     }
 }

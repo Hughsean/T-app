@@ -53,7 +53,12 @@ impl Controller {
                             Frame::TtsFrame(frame) => {
                                 match frame.state {
                                     TtsState::Start => {
-                                        // XXX 后续考虑增加功能
+                                        if let Some(text) = frame.text {
+                                            // TODO: 处理文本，发送到前端
+                                            debug!("对话文本: {}", text);
+                                        } else {
+                                            error!("对话文本为空");
+                                        }
                                     }
                                     TtsState::Stop => {
                                         // XXX 后续考虑增加功能

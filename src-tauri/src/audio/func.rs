@@ -4,7 +4,7 @@ use crate::{
     utils::{config::Config, device::get_device},
 };
 use cpal::traits::{DeviceTrait, StreamTrait};
-use tracing::{debug, error};
+use tracing::error;
 
 fn input_callback(
     audio_cacahe: SharedAsyncRwLock<AudioCache>,

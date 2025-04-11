@@ -44,10 +44,21 @@ pub(super) async fn input(
             .into(),
     );
 
-    stream.lock().await.play().unwrap();
+    stream
+        .lock()
+        .await
+        .play()
+        .inspect_err(|e| error!("播放失败: {}", e))
+        .unwrap();
 
     loop {
         if *stopflag.read().await {
+            stream
+                .lock()
+                .await
+                .pause()
+                .inspect_err(|e| error!("暂停失败: {}", e))
+                .unwrap();
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
@@ -106,10 +117,21 @@ pub(super) async fn output(
             .into(),
     );
 
-    stream.lock().await.play().unwrap();
+    stream
+        .lock()
+        .await
+        .play()
+        .inspect_err(|e| error!("播放失败: {}", e))
+        .unwrap();
 
     loop {
         if *stopflag.read().await {
+            stream
+                .lock()
+                .await
+                .pause()
+                .inspect_err(|e| error!("暂停失败: {}", e))
+                .unwrap();
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(200));

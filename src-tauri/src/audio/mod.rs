@@ -48,7 +48,7 @@ impl AudioState_ {
             .map_err(|e| e.to_string())
     }
 
-    pub async fn start(&mut self) -> Result<(), String> {
+    pub async fn start(&mut self, webview: Option<tauri::WebviewWindow>) -> Result<(), String> {
         if self.stopped.read().await.not() {
             debug!("对话已开始，拒绝再次启动");
             return Ok(());
@@ -68,17 +68,18 @@ impl AudioState_ {
             self.controller.clone(),
             self.audio_cache.clone(),
             self.ws.clone(),
+            webview,
         )
         .await;
 
-        let notify = self.ws.read().await.get_notify();
+        let ws_closed_notify = self.ws.read().await.get_closed_notify();
         let controller = self.controller.clone();
         let audio = self.audio.clone();
         let audio_cache = self.audio_cache.clone();
         let ws = self.ws.clone();
         let stopped = self.stopped.clone();
         tauri::async_runtime::spawn(async move {
-            notify.notified().await;
+            ws_closed_notify.notified().await;
             tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
             info!("WebSocket 断开连接，准备清理资源");
             stopped.write().await.clone_from(&true);
@@ -102,7 +103,7 @@ impl AudioState_ {
             warn!("对话已结束，无需再次停止");
             return Ok(());
         }
-        self.ws.read().await.get_notify().notify_waiters();
+        self.ws.read().await.get_closed_notify().notify_waiters();
         self.controller.write().await.close().await;
         self.audio.write().await.close().await;
         self.audio_cache.write().await.reset().await;

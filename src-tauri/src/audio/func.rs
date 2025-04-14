@@ -12,7 +12,8 @@ fn input_callback(
     move |data: &[f32], _: &cpal::InputCallbackInfo| {
         tauri::async_runtime::block_on(async {
             audio_cacahe
-                .blocking_read()
+                .read()
+                .await
                 .write_input_data(data.to_vec())
                 .await;
         });

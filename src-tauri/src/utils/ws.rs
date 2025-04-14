@@ -7,6 +7,7 @@ use tokio::sync::Notify;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tracing::trace;
 use tracing::warn;
 use tracing::{debug, error, info};
 
@@ -16,7 +17,7 @@ pub struct WebsocketProtocol {
     session_id: SharedAsyncRwLock<Option<String>>,
 
     hello_received: Arc<Notify>,
-    timeout_received: Arc<Notify>,
+    closed: Arc<Notify>,
 
     input_handle: Option<tauri::async_runtime::JoinHandle<()>>,
     output_handle: Option<tauri::async_runtime::JoinHandle<()>>,
@@ -35,7 +36,7 @@ impl WebsocketProtocol {
             session_id: SharedAsyncRwLock::new(None.into()),
 
             hello_received: Arc::new(Notify::new()),
-            timeout_received: Arc::new(Notify::new()),
+            closed: Arc::new(Notify::new()),
 
             input_handle: None,
             output_handle: None,
@@ -46,10 +47,7 @@ impl WebsocketProtocol {
         }
     }
 
-    pub async fn connect(
-        &mut self,
-        // audio_cache: SharedAsyncRwLock<AudioCache>,
-    ) -> Result<String, String> {
+    pub async fn connect(&mut self) -> Result<String, String> {
         if self.is_connected().await {
             warn!("WebSocket 已连接，拒绝重复连接");
             return self
@@ -70,7 +68,7 @@ impl WebsocketProtocol {
                 let connected = self.is_connected.clone();
                 let id = self.session_id.clone();
                 let hello_received = self.hello_received.clone();
-                let timeout_received = self.timeout_received.clone();
+                let closed = self.closed.clone();
 
                 let (frame_sender, frame_recv) =
                     mpsc::unbounded_channel::<crate::utils::frame::Frame>();
@@ -99,7 +97,7 @@ impl WebsocketProtocol {
                                         }
 
                                         let frame = crate::utils::frame::Frame::from(data.clone());
-                                        debug!("控制帧:\n{:#?}", frame);
+                                        trace!("控制帧:\n{:#?}", frame);
 
                                         frame_sender
                                             .send(frame)
@@ -113,19 +111,10 @@ impl WebsocketProtocol {
                                     audio_sender.send(bytes.to_vec()).unwrap_or_else(|e| {
                                         error!("发送音频数据失败: {}", e);
                                     });
-                                    // audio_cache
-                                    //     .read()
-                                    //     .await
-                                    //     .write_output_data(bytes.to_vec())
-                                    //     .await;
                                 }
                                 Message::Close(frame) => {
                                     debug!("WebSocket 连接关闭: {:?}", frame);
-                                    // *connected.write().await = false;
-                                    // controller.write().await.stop().await;
-                                    // self.close()./;
-                                    // TODO: 处理关闭连接的逻辑
-                                    timeout_received.notify_waiters();
+                                    closed.notify_waiters();
                                 }
                                 _ => {
                                     debug!("Received message:\n{:#?}", msg);
@@ -134,6 +123,7 @@ impl WebsocketProtocol {
                         }
                         debug!("WebSocket 输入处理线程结束");
                     }));
+
                 debug!("ws 输入处理线程启动成功");
 
                 let (tx, mut rx) = mpsc::unbounded_channel();
@@ -222,8 +212,8 @@ impl WebsocketProtocol {
 }
 
 impl WebsocketProtocol {
-    pub fn get_notify(&self) -> Arc<Notify> {
-        self.timeout_received.clone()
+    pub fn get_closed_notify(&self) -> Arc<Notify> {
+        self.closed.clone()
     }
 
     pub async fn send_audio(&self, data: Vec<u8>) -> Result<(), String> {
@@ -250,8 +240,8 @@ impl WebsocketProtocol {
         if let Some(recver) = self.frame_recver.write().await.as_mut() {
             match recver.try_recv() {
                 Ok(frame) => Some(frame),
-                Err(_e) => {
-                    // debug!("读取控制帧失败: {:?}", e);
+                Err(e) => {
+                    trace!("读取控制帧失败: {:?}", e);
                     None
                 }
             }
@@ -264,8 +254,8 @@ impl WebsocketProtocol {
         if let Some(recver) = self.audio_recver.write().await.as_mut() {
             match recver.try_recv() {
                 Ok(data) => Some(data),
-                Err(_e) => {
-                    // debug!("读取音频数据失败: {:?}", e);
+                Err(e) => {
+                    trace!("读取音频数据失败: {:?}", e);
                     None
                 }
             }
@@ -281,55 +271,6 @@ impl WebsocketProtocol {
     pub async fn is_connected(&self) -> bool {
         *self.is_connected.read().await
     }
-
-    // #[deprecated]
-    // pub fn audio_handler(
-    //     mut read: futures_util::stream::SplitStream<
-    //         tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
-    //     >,
-    //     connected: SharedAsyncRwLock<bool>,
-    //     hello_received: Arc<Notify>,
-    //     id: SharedAsyncRwLock<String>,
-    //     audio_cache: SharedAsyncRwLock<AudioCache>,
-    // ) -> impl Future + Send + 'static {
-    //     async move {
-    //         while let Some(Ok(msg)) = read.next().await {
-    //             match msg {
-    //                 Message::Text(text) => {
-    //                     if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-    //                         if data["type"] == "hello" && connected.read().await.not() {
-    //                             hello_received.notify_one();
-    //                             *connected.write().await = true;
-    //                             *id.write().await =
-    //                                 data["session_id"].as_str().unwrap_or("").to_string();
-    //                             debug!("session_id = {}", id.read().await);
-    //                         }
-
-    //                         let frame = crate::utils::frame::Frame::from(data.clone());
-
-    //                         debug!("控制帧:\n{:#?}", frame);
-    //                     }
-    //                 }
-    //                 Message::Binary(bytes) => {
-    //                     audio_cache
-    //                         .read()
-    //                         .await
-    //                         .write_output_data(bytes.to_vec())
-    //                         .await;
-    //                 }
-    //                 Message::Close(frame) => {
-    //                     debug!("WebSocket 连接关闭: {:?}", frame);
-    //                     // *connected.write().await = false;
-    //                     // controller.write().await.stop().await;
-    //                     // TODO: 处理关闭连接的逻辑
-    //                 }
-    //                 _ => {
-    //                     debug!("Received message:\n{:#?}", msg);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 impl Drop for WebsocketProtocol {

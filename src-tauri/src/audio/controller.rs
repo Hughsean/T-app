@@ -4,6 +4,7 @@ use crate::{
     utils::frame::{Frame, tts::TtsState},
 };
 use std::ops::Not;
+use tauri::Emitter;
 use tracing::{debug, error, warn};
 
 pub struct Controller {
@@ -23,6 +24,7 @@ impl Controller {
         controller: SharedAsyncRwLock<Self>,
         audio_cache: SharedAsyncRwLock<AudioCache>,
         ws: SharedAsyncRwLock<crate::utils::ws::WebsocketProtocol>,
+        webview: Option<tauri::WebviewWindow>,
     ) {
         if controller.read().await.is_stopped.read().await.not() {
             warn!("已拒绝重复启动控制器工作线程");
@@ -52,18 +54,21 @@ impl Controller {
                         match frame {
                             Frame::TtsFrame(frame) => {
                                 match frame.state {
-                                    TtsState::Start => {
-                                        if let Some(text) = frame.text {
-                                            // TODO: 处理文本，发送到前端
-                                            debug!("对话文本: {}", text);
-                                        } else {
-                                            error!("对话文本为空");
-                                        }
-                                    }
+                                    TtsState::Start => {}
                                     TtsState::Stop => {
                                         // XXX 后续考虑增加功能
                                     }
                                     TtsState::SentenceStart => {
+                                        if let Some(text) = frame.text {
+                                            // XXX: 测试
+                                            if let Some(webview) = webview.as_ref() {
+                                                webview.emit("recv_text", text.clone()).unwrap();
+                                            }
+                                            debug!("对话文本: {}", text);
+                                        } else {
+                                            error!("对话文本为空");
+                                        }
+
                                         audio_cache.write().await.session_stop().await;
                                         audio_cache.write().await.session_start();
                                         debug!("句子开始");

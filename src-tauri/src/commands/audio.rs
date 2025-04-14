@@ -1,8 +1,19 @@
 use crate::state::AppState;
 use tauri::State;
+use tracing::debug;
 #[tauri::command]
-pub async fn audio_start(state: State<'_, AppState>) -> Result<(), String> {
-    state.audio_starte.write().await.start().await?;
+pub async fn audio_start(
+    state: State<'_, AppState>,
+    webview: tauri::WebviewWindow,
+) -> Result<(), String> {
+    debug!("{}", webview.label());
+
+    state
+        .audio_starte
+        .write()
+        .await
+        .start(Some(webview))
+        .await?;
     Ok(())
 }
 
